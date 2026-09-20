@@ -365,8 +365,11 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.2.0";
+var VERSION = "1.2.1";
 var CHANGELOG = [
+  { v: "1.2.1", date: "2026-09-20", notes: [
+    "Fixed: updates now load reliably — the app was serving cached files after an update"
+  ] },
   { v: "1.2.0", date: "2026-09-20", notes: [
     "Charge time now follows a realistic charging curve — power tapers as the battery fills, especially past ~80%",
     "Estimates are most accurate on fast chargers and when charging to a high percentage",
