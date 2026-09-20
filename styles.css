@@ -155,6 +155,17 @@ input[type=range]:focus-visible{box-shadow:0 0 0 3px rgba(46,197,255,.35)}
 .edit-card{margin-top:18px;border:1px solid var(--line-2);border-radius:16px;padding:16px;background:var(--panel)}
 .divider{display:flex;align-items:center;gap:10px;margin:0 0 14px;color:var(--ink-faint);font-family:var(--font-mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase}
 .help{font-size:11.5px;color:var(--ink-faint);margin:9px 2px 0;line-height:1.5}
+.help a{color:var(--c5);text-decoration:none;border-bottom:1px solid var(--line-2)}
+.help a:hover{border-color:var(--c5)}
+
+/* per-car curve editor */
+.curve-edit{margin-top:4px;border:1px solid var(--line-2);border-radius:12px;background:var(--panel-2);padding:6px 4px 2px;touch-action:none}
+.curve-edit svg{display:block;width:100%;height:auto;touch-action:none}
+.curve-edit .ce-line{pointer-events:none}
+.curve-edit .ce-handle{fill:#fff;stroke:#0a0a16;stroke-width:2;pointer-events:none}
+.curve-edit .ce-hit{fill:transparent}
+.curve-edit .cc-grid{stroke:var(--line);stroke-width:1}
+.curve-edit .cc-xlab{fill:var(--ink-faint);font-family:var(--font-mono);font-size:9px;text-anchor:middle}
 .form-err{color:#ff6b6b;font-size:13px;margin:12px 2px 0}
 .edit-actions{display:flex;justify-content:space-between;margin-top:14px}
 .linkbtn{background:none;border:none;color:var(--ink-dim);font-family:var(--font-mono);font-size:12px;cursor:pointer;padding:6px 4px}

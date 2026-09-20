@@ -51,20 +51,19 @@ function milesFor(car, pct) { return Math.round(car.battery * pct / 100 * car.ef
    the shape (near peak through the low-mid range, tapering hard near full) is
    broadly shared — enough to make time estimates far better than a flat rate.
    Scaled by each car's max charge rate, and always capped by the charger. */
-var CURVE = [
-  [0, 0.60], [5, 0.90], [10, 1.00], [20, 0.98], [30, 0.90], [40, 0.82],
-  [50, 0.72], [60, 0.62], [70, 0.50], [80, 0.37], [85, 0.30], [90, 0.22],
-  [95, 0.14], [100, 0.07]
-];
-function curveFactor(soc) {
-  if (soc <= CURVE[0][0]) return CURVE[0][1];
-  for (var i = 1; i < CURVE.length; i++) {
-    if (soc <= CURVE[i][0]) {
-      var a = CURVE[i - 1], b = CURVE[i];
-      return a[1] + (b[1] - a[1]) * (soc - a[0]) / (b[0] - a[0]);
+var CURVE_SOC = [10, 35, 60, 80, 100];               // state-of-charge anchor points (%)
+var DEFAULT_CURVE = [1.00, 0.85, 0.60, 0.37, 0.07];  // fraction of peak at each anchor (typical shape)
+
+function curveFactor(curve, soc) {
+  curve = (curve && curve.length === CURVE_SOC.length) ? curve : DEFAULT_CURVE;
+  if (soc <= CURVE_SOC[0]) return curve[0];
+  for (var i = 1; i < CURVE_SOC.length; i++) {
+    if (soc <= CURVE_SOC[i]) {
+      var t = (soc - CURVE_SOC[i - 1]) / (CURVE_SOC[i] - CURVE_SOC[i - 1]);
+      return curve[i - 1] + (curve[i] - curve[i - 1]) * t;
     }
   }
-  return CURVE[CURVE.length - 1][1];
+  return curve[curve.length - 1];
 }
 
 /* Minutes to charge from -> to (%) on a charger of chargerKw, integrating the
@@ -77,7 +76,7 @@ function chargeMinutes(car, from, to, chargerKw) {
   for (var s = from; s < to; s += STEP) {
     var mid = Math.min(100, s + STEP / 2);
     var power = (car.maxkw && car.maxkw > 0)
-      ? Math.min(chargerKw, car.maxkw * curveFactor(mid))
+      ? Math.min(chargerKw, car.maxkw * curveFactor(car.curve, mid))
       : chargerKw;
     if (power > 0) mins += (dE / power) * 60;
   }
@@ -242,6 +241,87 @@ function renderCarList() {
   });
 }
 
+/* ---- per-car charging-curve editor (drag the points) ---- */
+var draftCurve = null;
+var CE = { x0: 12, x1: 308, y0: 128, y1: 12 };
+function ceX(soc) { return CE.x0 + (soc / 100) * (CE.x1 - CE.x0); }
+function ceY(f) { return CE.y0 - f * (CE.y0 - CE.y1); }
+function ceInvY(y) { return (CE.y0 - y) / (CE.y0 - CE.y1); }
+
+function renderCurveEditor() {
+  var el = $("curveEdit");
+  if (!el || !draftCurve) return;
+  var grid = "";
+  [0, 50, 100].forEach(function (g) {
+    grid += '<line class="cc-grid" x1="' + ceX(g) + '" y1="' + CE.y1 + '" x2="' + ceX(g) + '" y2="' + CE.y0 + '"/>';
+  });
+  var hits = "", handles = "";
+  for (var i = 0; i < CURVE_SOC.length; i++) {
+    hits += '<circle class="ce-hit" cx="' + ceX(CURVE_SOC[i]) + '" cy="' + ceY(draftCurve[i]) + '" r="20"/>';
+    handles += '<circle class="ce-handle" cx="' + ceX(CURVE_SOC[i]) + '" cy="' + ceY(draftCurve[i]) + '" r="6"/>';
+  }
+  el.innerHTML =
+    '<svg id="ceSvg" viewBox="0 0 320 148" aria-label="Charging curve editor — drag the points to match your car.">' +
+      '<defs><linearGradient id="ceg" x1="0" x2="1">' +
+        '<stop offset="0" stop-color="#ff2d95"/><stop offset=".2" stop-color="#ff8a00"/>' +
+        '<stop offset=".4" stop-color="#ffe600"/><stop offset=".6" stop-color="#25f4b2"/>' +
+        '<stop offset=".8" stop-color="#2ec5ff"/><stop offset="1" stop-color="#8a5cff"/>' +
+      '</linearGradient></defs>' + grid +
+      '<polyline class="ce-line" fill="none" stroke="url(#ceg)" stroke-width="2.5" stroke-linejoin="round"/>' +
+      hits + handles +
+      '<text class="cc-xlab" x="' + ceX(0) + '" y="' + (CE.y0 + 14) + '">0</text>' +
+      '<text class="cc-xlab" x="' + ceX(50) + '" y="' + (CE.y0 + 14) + '">50</text>' +
+      '<text class="cc-xlab" x="' + ceX(100) + '" y="' + (CE.y0 + 14) + '">100% SoC</text>' +
+    '</svg>';
+  updateCurveGraphics();
+  wireCurveDrag();
+}
+
+function updateCurveGraphics() {
+  var svg = $("ceSvg");
+  if (!svg || !draftCurve) return;
+  var pts = [ceX(0) + "," + ceY(draftCurve[0])];
+  for (var i = 0; i < CURVE_SOC.length; i++) pts.push(ceX(CURVE_SOC[i]) + "," + ceY(draftCurve[i]));
+  svg.querySelector(".ce-line").setAttribute("points", pts.join(" "));
+  var hd = svg.querySelectorAll(".ce-handle"), ht = svg.querySelectorAll(".ce-hit");
+  for (var k = 0; k < CURVE_SOC.length; k++) {
+    var cy = ceY(draftCurve[k]);
+    hd[k].setAttribute("cy", cy); ht[k].setAttribute("cy", cy);
+  }
+}
+
+function wireCurveDrag() {
+  var svg = $("ceSvg");
+  if (!svg) return;
+  var active = null;
+  function toPoint(e) {
+    var p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY;
+    var loc = p.matrixTransform(svg.getScreenCTM().inverse());
+    return { x: loc.x, f: Math.max(0.03, Math.min(1, ceInvY(loc.y))) };
+  }
+  function nearest(x) {
+    var best = 0, bd = Infinity;
+    for (var i = 0; i < CURVE_SOC.length; i++) {
+      var d = Math.abs(ceX(CURVE_SOC[i]) - x);
+      if (d < bd) { bd = d; best = i; }
+    }
+    return best;
+  }
+  svg.addEventListener("pointerdown", function (e) {
+    var t = toPoint(e); active = nearest(t.x);
+    draftCurve[active] = +t.f.toFixed(3); updateCurveGraphics();
+    try { svg.setPointerCapture(e.pointerId); } catch (_) {}
+    e.preventDefault();
+  });
+  svg.addEventListener("pointermove", function (e) {
+    if (active === null) return;
+    draftCurve[active] = +toPoint(e).f.toFixed(3); updateCurveGraphics(); e.preventDefault();
+  });
+  function end() { active = null; }
+  svg.addEventListener("pointerup", end);
+  svg.addEventListener("pointercancel", end);
+}
+
 function openEdit(id) {
   editingId = id;
   var car = cars.find(function (c) { return c.id === id; });
@@ -252,7 +332,9 @@ function openEdit(id) {
   $("fMax").value = car.maxkw || "";
   $("deleteCar").hidden = cars.length <= 1;
   $("formErr").hidden = true;
+  draftCurve = (car.curve && car.curve.length === CURVE_SOC.length) ? car.curve.slice() : DEFAULT_CURVE.slice();
   $("editCard").hidden = false;
+  renderCurveEditor();
   $("editCard").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
@@ -265,13 +347,16 @@ function openAdd() {
   $("fMax").value = "";
   $("deleteCar").hidden = true;
   $("formErr").hidden = true;
+  draftCurve = DEFAULT_CURVE.slice();
   $("editCard").hidden = false;
+  renderCurveEditor();
   $("editCard").scrollIntoView({ behavior: "smooth", block: "nearest" });
   $("fName").focus();
 }
 
 $("addCarBtn").addEventListener("click", openAdd);
 $("cancelEdit").addEventListener("click", function () { $("editCard").hidden = true; });
+$("curveReset").addEventListener("click", function () { draftCurve = DEFAULT_CURVE.slice(); updateCurveGraphics(); });
 
 function showErr(msg) {
   var el = $("formErr");
@@ -292,12 +377,13 @@ $("editCard").addEventListener("submit", function (e) {
   if (!(eff > 0)) return showErr("Enter the efficiency in mi/kWh.");
   if (maxRaw !== "" && !(maxkw > 0)) return showErr("Max charge rate must be a positive number, or leave it blank.");
 
+  var curve = (draftCurve && draftCurve.length === CURVE_SOC.length) ? draftCurve.slice() : DEFAULT_CURVE.slice();
   if (editingId) {
     var car = cars.find(function (c) { return c.id === editingId; });
-    car.name = name; car.battery = battery; car.eff = eff; car.maxkw = maxkw;
+    car.name = name; car.battery = battery; car.eff = eff; car.maxkw = maxkw; car.curve = curve;
   } else {
     var id = "car-" + Date.now().toString(36);
-    cars.push({ id: id, name: name, battery: battery, eff: eff, maxkw: maxkw });
+    cars.push({ id: id, name: name, battery: battery, eff: eff, maxkw: maxkw, curve: curve });
     activeId = id; // newly added car becomes active
     save(ACTIVE_KEY, activeId);
   }
@@ -365,8 +451,12 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.3.1";
+var VERSION = "1.4.0";
 var CHANGELOG = [
+  { v: "1.4.0", date: "2026-09-20", notes: [
+    "Adjustable charging curve per car — drag the points to match your model for a sharper estimate",
+    "Look up your car's real curve via EVKX or EV Database (links in the car editor)"
+  ] },
   { v: "1.3.1", date: "2026-09-20", notes: [
     "About panel now explains the formula and shows the charging-curve chart",
     "Clearer about what the estimate can't know (your exact curve, temperature, preconditioning)"
@@ -433,7 +523,7 @@ function drawCurveChart() {
   function Y(f) { return y0 - f * (y0 - y1); }
 
   var pts = [];
-  for (var s = 0; s <= 100; s += 2) pts.push(X(s).toFixed(1) + "," + Y(curveFactor(s)).toFixed(1));
+  for (var s = 0; s <= 100; s += 2) pts.push(X(s).toFixed(1) + "," + Y(curveFactor(null, s)).toFixed(1));
 
   var grid = "";
   [0, 25, 50, 75, 100].forEach(function (g) {
