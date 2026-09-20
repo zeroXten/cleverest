@@ -98,6 +98,46 @@ function calc() {
   $(id).addEventListener("input", calc);
 });
 
+/* ---------- slider "settle" guard ----------
+   On touch, lifting your thumb often nudges the value a few units. Once you've
+   settled on a value (held it still for a beat), a small change that happens at
+   the instant you release is treated as lift-jitter and snapped back. A
+   deliberate move — dragging to a new spot and holding it — is kept. */
+function addSettleGuard(slider) {
+  var SETTLE_MS = 200;   // held still this long => "settled" on this value
+  var LIFT_MS = 220;     // a change this close to release counts as a lift-nudge
+  var settled = null;
+  var lastChange = 0;
+  var timer = null;
+
+  slider.addEventListener("pointerdown", function () {
+    settled = +slider.value;                 // where the touch started counts as settled
+    lastChange = performance.now();
+    clearTimeout(timer);
+  });
+  slider.addEventListener("input", function () {
+    lastChange = performance.now();
+    clearTimeout(timer);
+    timer = setTimeout(function () { settled = +slider.value; }, SETTLE_MS);
+  });
+
+  function release() {
+    clearTimeout(timer);
+    var jitter = Math.max(1, Math.round((+slider.max - +slider.min) * 0.03)); // ~3% of range
+    if (settled != null && +slider.value !== settled &&
+        (performance.now() - lastChange) < LIFT_MS &&
+        Math.abs(+slider.value - settled) <= jitter) {
+      slider.value = settled;
+      calc();
+    }
+    settled = null;
+  }
+  slider.addEventListener("pointerup", release);
+  slider.addEventListener("pointercancel", release);
+  slider.addEventListener("touchend", release);
+}
+["now", "tgt", "price", "speed"].forEach(function (id) { addSettleGuard($(id)); });
+
 /* ---------- header / active car ---------- */
 function renderHeader() {
   $("carCurrentName").textContent = activeCar().name;
@@ -286,6 +326,45 @@ if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("sw.js").catch(function () {});
   });
 }
+
+/* ---------- version + changelog ---------- */
+var VERSION = "1.1.0";
+var CHANGELOG = [
+  { v: "1.1.0", date: "2026-09-20", notes: [
+    "Sliders now ignore accidental thumb-lift nudges",
+    "Version and changelog added to the footer"
+  ] },
+  { v: "1.0.0", date: "2026-09-20", notes: [
+    "Renamed to CLEVEREST",
+    "Charger-speed slider capped to each car’s max rate",
+    "Price slider range adjusted",
+    "Logo and tagline polish"
+  ] },
+  { v: "0.0.0", date: "2026-09-20", notes: [
+    "Initial release — charge time, finish time, cost, and range estimates",
+    "Save multiple cars on your device — battery, efficiency, max charge rate",
+    "Installable app (PWA) that works offline"
+  ] }
+];
+
+(function initChangelog() {
+  var verBtn = $("verBtn");
+  verBtn.textContent = "Version " + VERSION;
+
+  $("clogBody").innerHTML = CHANGELOG.map(function (e) {
+    var items = e.notes.map(function (n) { return "<li>" + n + "</li>"; }).join("");
+    return '<div class="clog-entry"><p class="clog-ver"><b>' + e.v +
+           '</b><span class="date">' + e.date + '</span></p><ul>' + items + "</ul></div>";
+  }).join("");
+
+  var modal = $("changelog");
+  function onKey(e) { if (e.key === "Escape") close(); }
+  function open() { modal.hidden = false; document.addEventListener("keydown", onKey); }
+  function close() { modal.hidden = true; document.removeEventListener("keydown", onKey); }
+  verBtn.addEventListener("click", open);
+  $("clogClose").addEventListener("click", close);
+  $("clogBackdrop").addEventListener("click", close);
+})();
 
 /* ---------- boot ---------- */
 renderHeader();

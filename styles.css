@@ -156,3 +156,28 @@ input[type=range]:focus-visible{box-shadow:0 0 0 3px rgba(46,197,255,.35)}
 .linkbtn.danger{color:#ff6b6b}
 
 .view[hidden]{display:none}
+
+/* footer */
+.foot{margin-top:30px;text-align:center;font-family:var(--font-mono);font-size:11.5px;color:var(--ink-faint);line-height:1.8}
+.foot a{color:var(--ink-dim);text-decoration:none;border-bottom:1px solid var(--line-2)}
+.foot a:hover{color:var(--c5);border-color:var(--c5)}
+.ver{background:none;border:none;color:var(--ink-dim);font-family:var(--font-mono);font-size:11.5px;cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--line-2)}
+.ver:hover{color:var(--c5)}
+
+/* changelog modal */
+.modal{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:20px;padding-bottom:calc(20px + env(safe-area-inset-bottom,0px))}
+.modal[hidden]{display:none}
+.modal-backdrop{position:absolute;inset:0;background:rgba(4,4,10,.72);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
+.modal-panel{position:relative;width:100%;max-width:420px;max-height:80vh;overflow:auto;background:var(--panel-2);border:1px solid var(--line-2);border-radius:16px;padding:18px 18px 20px}
+.modal-panel:before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:var(--rainbow)}
+.modal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.modal-title{font-family:var(--font-logo);font-weight:700;font-size:18px;margin:0;letter-spacing:.03em}
+.modal-x{background:none;border:none;color:var(--ink-dim);font-size:18px;cursor:pointer;line-height:1;padding:6px;margin:-6px}
+.modal-x:hover{color:var(--ink)}
+.clog-entry{padding:14px 0;border-top:1px solid var(--line)}
+.clog-entry:first-child{border-top:none}
+.clog-ver{display:flex;align-items:baseline;gap:10px;margin:0 0 8px}
+.clog-ver b{font-family:var(--font-mono);font-weight:600;font-size:14px;color:var(--c5)}
+.clog-ver .date{font-family:var(--font-mono);font-size:11px;color:var(--ink-faint)}
+.clog-entry ul{margin:0;padding-left:18px}
+.clog-entry li{font-size:13.5px;color:var(--ink-dim);margin:5px 0;line-height:1.5}

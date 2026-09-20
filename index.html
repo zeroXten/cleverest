@@ -127,6 +127,23 @@
       </form>
     </main>
 
+    <footer class="foot">
+      <button class="ver" id="verBtn" aria-haspopup="dialog">Version 1.1.0</button>
+      <span aria-hidden="true"> · </span>
+      Made by <a href="https://www.linkedin.com/in/zeroxten/" target="_blank" rel="noopener noreferrer">zeroXten</a>
+    </footer>
+
+  </div>
+
+  <div class="modal" id="changelog" hidden>
+    <div class="modal-backdrop" id="clogBackdrop"></div>
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="clogTitle">
+      <div class="modal-head">
+        <h2 class="modal-title" id="clogTitle">Changelog</h2>
+        <button class="modal-x" id="clogClose" aria-label="Close changelog">✕</button>
+      </div>
+      <div class="clog" id="clogBody"></div>
+    </div>
   </div>
 
   <script src="app.js"></script>
