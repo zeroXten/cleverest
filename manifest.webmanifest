@@ -1,0 +1,16 @@
+{
+  "name": "CleverCalc — EV calculator",
+  "short_name": "CleverCalc",
+  "description": "A simple EV charging calculator: how long, how much, and how far.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#06060d",
+  "theme_color": "#06060d",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

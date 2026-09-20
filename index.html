@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>CleverCalc — EV calculator</title>
+  <meta name="description" content="A simple EV charging calculator: how long, how much, and how far — for the car you drive.">
+
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#06060d">
+  <link rel="icon" href="icons/favicon-64.png" sizes="64x64" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="CleverCalc">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;800;900&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+
+    <header class="app-top">
+      <div class="brandwrap">
+        <h1 class="brand">CL<span class="ev">EV</span>ERCALC</h1>
+        <p class="brand-tag">charge time · cost · range</p>
+      </div>
+      <div class="cars-col">
+        <button class="cars-btn" id="carsBtn" aria-label="Manage cars">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 13l1.6-4.2A2 2 0 0 1 7.5 7.5h9a2 2 0 0 1 1.9 1.3L20 13"/><path d="M4 13h16v4h-2a2 2 0 1 1-4 0H10a2 2 0 1 1-4 0H4z"/></svg>
+          Cars <span class="count" id="carCount">1</span>
+        </button>
+        <p class="car-current" id="carCurrent"><span class="cdot"></span><span id="carCurrentName">Demo EV</span></p>
+      </div>
+    </header>
+
+    <!-- CALCULATOR VIEW -->
+    <main class="view" id="viewCalc">
+      <div class="field">
+        <div class="flabel"><span class="name">Battery now</span><span class="val pink" id="vNow">20% <small>· 51 mi</small></span></div>
+        <input type="range" id="now" min="0" max="100" value="20" step="1" aria-label="Battery level now (%)">
+        <div class="scale"><span>empty</span><span>full</span></div>
+      </div>
+
+      <div class="field">
+        <div class="flabel"><span class="name">Charge to</span><span class="val cyan" id="vTgt">80% <small>· 205 mi</small></span></div>
+        <input type="range" id="tgt" min="0" max="100" value="80" step="1" aria-label="Charge to (%)">
+        <div class="scale"><span>0%</span><span>100%</span></div>
+      </div>
+
+      <div class="field">
+        <div class="flabel"><span class="name">Charger speed</span><span class="val violet" id="vSpeed">50 kW</span></div>
+        <input type="range" id="speed" min="3" max="500" value="50" step="1" aria-label="Charger speed (kW)">
+        <div class="scale"><span>3</span><span>150</span><span>350</span><span>500 kW</span></div>
+      </div>
+
+      <div class="field">
+        <div class="flabel"><span class="name">Price</span><span class="val yellow" id="vPrice">45p /kWh</span></div>
+        <input type="range" id="price" min="0" max="200" value="45" step="1" aria-label="Electricity price (pence per kWh)">
+        <div class="scale"><span>free</span><span>200p</span></div>
+      </div>
+
+      <section class="result" aria-live="polite">
+        <div class="result-top">
+          <p class="r-headline" id="rHeadline">READY BY <b>19:32</b></p>
+          <p class="r-time" id="rTime">51 min</p>
+          <p class="r-sub" id="rSub">20% → 80% · +38.4 kWh</p>
+        </div>
+        <div class="r-range">
+          <p class="cap">Range after charge</p>
+          <span class="big" id="rRange">205 miles</span>
+          <p class="plus" id="rAdded">+154 miles added</p>
+        </div>
+        <div class="r-grid">
+          <div class="r-cell"><p class="k">Energy added</p><p class="v teal" id="rKwh">38.4 kWh</p></div>
+          <div class="r-cell"><p class="k">Cost</p><p class="v yellow" id="rCost">£17.28</p></div>
+        </div>
+      </section>
+
+      <button class="btn install" id="installBtn" hidden>Install app</button>
+      <p class="ios-hint" id="iosHint" hidden>Install: tap <b>Share</b> then <b>Add to Home Screen</b></p>
+    </main>
+
+    <!-- CARS VIEW -->
+    <main class="view" id="viewCars" hidden>
+      <div class="cars-head">
+        <h2 class="view-title">Your cars</h2>
+        <button class="icon-btn" id="doneBtn" aria-label="Back to calculator">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+          Done
+        </button>
+      </div>
+
+      <div id="carList"></div>
+
+      <button class="btn ghost add" id="addCarBtn">+ Add another car</button>
+
+      <form class="edit-card" id="editCard" hidden>
+        <p class="divider" id="editTitle">Edit car</p>
+        <div class="field">
+          <div class="flabel"><span class="name">Name</span></div>
+          <input type="text" id="fName" placeholder="My Ioniq 5" autocomplete="off">
+        </div>
+        <div class="field">
+          <div class="flabel"><span class="name">Battery size</span></div>
+          <div class="unit"><input type="number" id="fBattery" min="1" step="0.1" inputmode="decimal" placeholder="77"><span class="u">kWh</span></div>
+        </div>
+        <div class="field">
+          <div class="flabel"><span class="name">Efficiency</span></div>
+          <div class="unit"><input type="number" id="fEff" min="0.1" step="0.1" inputmode="decimal" placeholder="3.8"><span class="u">mi/kWh</span></div>
+          <p class="help">How far it goes per kWh — check your car's trip screen for the real figure.</p>
+        </div>
+        <div class="field">
+          <div class="flabel"><span class="name">Max charge rate</span></div>
+          <div class="unit"><input type="number" id="fMax" min="1" step="1" inputmode="numeric" placeholder="150"><span class="u">kW</span></div>
+          <p class="help">Optional — caps the estimate to what the car can physically take.</p>
+        </div>
+        <p class="form-err" id="formErr" hidden></p>
+        <button type="submit" class="btn">Save car</button>
+        <div class="edit-actions">
+          <button type="button" class="linkbtn" id="cancelEdit">Cancel</button>
+          <button type="button" class="linkbtn danger" id="deleteCar" hidden>Delete car</button>
+        </div>
+      </form>
+    </main>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
