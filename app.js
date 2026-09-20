@@ -365,8 +365,11 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.2.1";
+var VERSION = "1.2.2";
 var CHANGELOG = [
+  { v: "1.2.2", date: "2026-09-20", notes: [
+    "Logo now shows the cleverest.autos web address"
+  ] },
   { v: "1.2.1", date: "2026-09-20", notes: [
     "Fixed: updates now load reliably — the app was serving cached files after an update"
   ] },
