@@ -365,8 +365,12 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.3.0";
+var VERSION = "1.3.1";
 var CHANGELOG = [
+  { v: "1.3.1", date: "2026-09-20", notes: [
+    "About panel now explains the formula and shows the charging-curve chart",
+    "Clearer about what the estimate can't know (your exact curve, temperature, preconditioning)"
+  ] },
   { v: "1.3.0", date: "2026-09-20", notes: [
     "Added anonymous, cookie-free usage stats (GoatCounter) — no personal data",
     "Your cars and settings still stay only on your device"
@@ -418,6 +422,43 @@ var CHANGELOG = [
   $("clogBackdrop").addEventListener("click", close);
 })();
 
+/* Draw the generic charging curve (normalised power vs SoC) into the About
+   panel, straight from the same CURVE data the calculator uses. */
+function drawCurveChart() {
+  var el = $("curveChart");
+  if (!el) return;
+  var W = 340, H = 190, pl = 34, pr = 10, pt = 12, pb = 26;
+  var x0 = pl, x1 = W - pr, y0 = H - pb, y1 = pt;
+  function X(soc) { return x0 + (soc / 100) * (x1 - x0); }
+  function Y(f) { return y0 - f * (y0 - y1); }
+
+  var pts = [];
+  for (var s = 0; s <= 100; s += 2) pts.push(X(s).toFixed(1) + "," + Y(curveFactor(s)).toFixed(1));
+
+  var grid = "";
+  [0, 25, 50, 75, 100].forEach(function (g) {
+    grid += '<line class="cc-grid" x1="' + X(g) + '" y1="' + y1 + '" x2="' + X(g) + '" y2="' + y0 + '"/>' +
+            '<text class="cc-xlab" x="' + X(g) + '" y="' + (y0 + 14) + '">' + g + '</text>';
+  });
+  [0, 0.5, 1].forEach(function (f) {
+    grid += '<line class="cc-grid" x1="' + x0 + '" y1="' + Y(f) + '" x2="' + x1 + '" y2="' + Y(f) + '"/>' +
+            '<text class="cc-ylab" x="' + (x0 - 6) + '" y="' + (Y(f) + 3) + '">' + Math.round(f * 100) + '</text>';
+  });
+
+  el.innerHTML =
+    '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Typical charging curve: power as a percentage of the car\'s peak versus state of charge. Near peak in the low-to-mid range, tapering steeply toward full.">' +
+      '<defs><linearGradient id="ccg" x1="0" y1="0" x2="1" y2="0">' +
+        '<stop offset="0" stop-color="#ff2d95"/><stop offset=".2" stop-color="#ff8a00"/>' +
+        '<stop offset=".4" stop-color="#ffe600"/><stop offset=".6" stop-color="#25f4b2"/>' +
+        '<stop offset=".8" stop-color="#2ec5ff"/><stop offset="1" stop-color="#8a5cff"/>' +
+      '</linearGradient></defs>' +
+      grid +
+      '<polyline points="' + pts.join(" ") + '" fill="none" stroke="url(#ccg)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
+      '<text class="cc-axis" x="' + ((x0 + x1) / 2) + '" y="' + (H - 1) + '">state of charge (%)</text>' +
+      '<text class="cc-axis" transform="translate(9,' + ((y0 + y1) / 2) + ') rotate(-90)">power (% of peak)</text>' +
+    '</svg>';
+}
+
 /* ---------- about ---------- */
 (function initAbout() {
   var modal = $("about");
@@ -427,6 +468,7 @@ var CHANGELOG = [
   $("aboutBtn").addEventListener("click", open);
   $("aboutClose").addEventListener("click", close);
   $("aboutBackdrop").addEventListener("click", close);
+  drawCurveChart();
 })();
 
 /* ---------- boot ---------- */

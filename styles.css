@@ -191,3 +191,13 @@ input[type=range]:focus-visible{box-shadow:0 0 0 3px rgba(46,197,255,.35)}
 .prose p{margin:0 0 12px}
 .prose h3{font-family:var(--font-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-faint);margin:16px 0 6px;font-weight:600}
 .prose b{color:var(--ink);font-weight:600}
+.prose ul{margin:0 0 12px;padding-left:20px}
+.prose li{margin:5px 0}
+.formula{font-family:var(--font-mono);font-size:12.5px;color:var(--c5);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:9px 11px;overflow-x:auto;white-space:nowrap}
+
+.curve-chart{margin:8px 0 14px}
+.curve-chart svg{display:block;width:100%;height:auto}
+.curve-chart .cc-grid{stroke:var(--line);stroke-width:1}
+.curve-chart .cc-xlab{fill:var(--ink-faint);font-family:var(--font-mono);font-size:9px;text-anchor:middle}
+.curve-chart .cc-ylab{fill:var(--ink-faint);font-family:var(--font-mono);font-size:9px;text-anchor:end}
+.curve-chart .cc-axis{fill:var(--ink-faint);font-family:var(--font-mono);font-size:9px;text-anchor:middle}

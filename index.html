@@ -130,7 +130,7 @@
     <footer class="foot">
       <button class="ver" id="aboutBtn" aria-haspopup="dialog">About</button>
       <span aria-hidden="true"> · </span>
-      <button class="ver" id="verBtn" aria-haspopup="dialog">Version 1.3.0</button>
+      <button class="ver" id="verBtn" aria-haspopup="dialog">Version 1.3.1</button>
       <span aria-hidden="true"> · </span>
       Made by <a href="https://www.linkedin.com/in/zeroxten/" target="_blank" rel="noopener noreferrer">zeroXten</a>
     </footer>
@@ -145,17 +145,32 @@
         <button class="modal-x" id="aboutClose" aria-label="Close about">✕</button>
       </div>
       <div class="prose">
-        <p><b>CLEVEREST</b> estimates how long an EV charge will take, when it'll be done, what it'll cost, and how far you'll be able to drive afterwards.</p>
+        <p><b>CLEVEREST</b> estimates how long an EV charge will take, when it'll be done, what it'll cost, and how far you'll drive afterwards.</p>
 
         <h3>Charge time</h3>
-        <p>First it works out the energy you're adding: your <b>battery size</b> multiplied by the percentage you're topping up.</p>
-        <p>Charging isn't a steady speed — it slows as the battery fills, especially past ~80%. So the time is built up across the charge using a general EV charging curve scaled to your car's <b>max charge rate</b>, and capped by the <b>charger speed</b> you pick. Whichever is lower at each point — the charger or what the car will accept — is what's used. A small allowance (~10%) covers charging losses.</p>
+        <p>The energy needed is simple — your <b>battery size</b> × the percentage you're adding. Turning that into <i>time</i> is the hard part, because charging power isn't constant: it changes with the state of charge.</p>
+        <p>So rather than one division, the time is added up in 1% steps. At each step the power used is whichever is <b>lower</b>:</p>
+        <ul>
+          <li>the <b>charger's</b> output — the speed you pick, or</li>
+          <li>what the <b>car</b> accepts at that level — its <b>max rate</b> × the curve below.</li>
+        </ul>
+        <p>Each step's time is its energy ÷ that power. Add them up, plus ~10% for charging losses:</p>
+        <p class="formula">time ≈ Σ ( battery × 1% ÷ power<sub>soc</sub> ) ÷ 0.9</p>
+
+        <h3>The charging curve</h3>
+        <p>Every model's real curve is different, and there's no free, reliable database of them — so instead of pretending to know yours, CLEVEREST uses one <b>typical fast-charge shape</b>, scaled to your car's max rate. It stays near peak through the low-to-mid range, then tapers hard as the battery fills:</p>
+        <div id="curveChart" class="curve-chart"></div>
+        <p>That shape is why the estimate mirrors real charging:</p>
+        <ul>
+          <li><b>AC or slower DC</b> — the charger is the limit the whole way, so it's near-linear (the curve barely matters up to ~80%).</li>
+          <li><b>Rapid DC</b> near the car's peak — the curve takes over and the last stretch slows right down.</li>
+        </ul>
+
+        <h3>What it can't know</h3>
+        <p>It uses a generic curve, not your car's exact one, and it can't see the <b>battery temperature</b> or whether you've <b>preconditioned</b> — both change real-world speed. It's most accurate on a fast charger in the 10–80% range. A solid ballpark, not a stopwatch.</p>
 
         <h3>Cost and range</h3>
         <p><b>Cost</b> = energy added × your <b>price</b> per kWh. <b>Range</b> = battery size × charge level × your car's <b>efficiency</b> (mi/kWh).</p>
-
-        <h3>How accurate is it?</h3>
-        <p>It's an estimate. Every car's real curve is a little different, and a cold battery, preconditioning, or an ageing pack all change things. It's closest on a fast charger in the 10–80% range. Treat it as a good ballpark, not a stopwatch.</p>
 
         <h3>Privacy</h3>
         <p>Your cars and settings stay on your device — nothing is uploaded. The app counts anonymous, cookie-free page visits (via GoatCounter) so I can see it's being used; no personal data, and no tracking across other sites.</p>
