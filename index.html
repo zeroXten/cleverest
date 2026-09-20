@@ -128,11 +128,36 @@
     </main>
 
     <footer class="foot">
-      <button class="ver" id="verBtn" aria-haspopup="dialog">Version 1.1.0</button>
+      <button class="ver" id="aboutBtn" aria-haspopup="dialog">About</button>
+      <span aria-hidden="true"> · </span>
+      <button class="ver" id="verBtn" aria-haspopup="dialog">Version 1.2.0</button>
       <span aria-hidden="true"> · </span>
       Made by <a href="https://www.linkedin.com/in/zeroxten/" target="_blank" rel="noopener noreferrer">zeroXten</a>
     </footer>
 
+  </div>
+
+  <div class="modal" id="about" hidden>
+    <div class="modal-backdrop" id="aboutBackdrop"></div>
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+      <div class="modal-head">
+        <h2 class="modal-title" id="aboutTitle">About</h2>
+        <button class="modal-x" id="aboutClose" aria-label="Close about">✕</button>
+      </div>
+      <div class="prose">
+        <p><b>CLEVEREST</b> estimates how long an EV charge will take, when it'll be done, what it'll cost, and how far you'll be able to drive afterwards.</p>
+
+        <h3>Charge time</h3>
+        <p>First it works out the energy you're adding: your <b>battery size</b> multiplied by the percentage you're topping up.</p>
+        <p>Charging isn't a steady speed — it slows as the battery fills, especially past ~80%. So the time is built up across the charge using a general EV charging curve scaled to your car's <b>max charge rate</b>, and capped by the <b>charger speed</b> you pick. Whichever is lower at each point — the charger or what the car will accept — is what's used. A small allowance (~10%) covers charging losses.</p>
+
+        <h3>Cost and range</h3>
+        <p><b>Cost</b> = energy added × your <b>price</b> per kWh. <b>Range</b> = battery size × charge level × your car's <b>efficiency</b> (mi/kWh).</p>
+
+        <h3>How accurate is it?</h3>
+        <p>It's an estimate. Every car's real curve is a little different, and a cold battery, preconditioning, or an ageing pack all change things. It's closest on a fast charger in the 10–80% range. Treat it as a good ballpark, not a stopwatch.</p>
+      </div>
+    </div>
   </div>
 
   <div class="modal" id="changelog" hidden>

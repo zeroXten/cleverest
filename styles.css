@@ -181,3 +181,8 @@ input[type=range]:focus-visible{box-shadow:0 0 0 3px rgba(46,197,255,.35)}
 .clog-ver .date{font-family:var(--font-mono);font-size:11px;color:var(--ink-faint)}
 .clog-entry ul{margin:0;padding-left:18px}
 .clog-entry li{font-size:13.5px;color:var(--ink-dim);margin:5px 0;line-height:1.5}
+
+.prose{font-size:14px;color:var(--ink-dim);line-height:1.65}
+.prose p{margin:0 0 12px}
+.prose h3{font-family:var(--font-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-faint);margin:16px 0 6px;font-weight:600}
+.prose b{color:var(--ink);font-weight:600}

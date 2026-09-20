@@ -46,6 +46,44 @@ function pad(n) { return (n < 10 ? "0" : "") + n; }
 function clock(d) { return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
 function milesFor(car, pct) { return Math.round(car.battery * pct / 100 * car.eff); }
 
+/* Generic normalised DC charging curve: the fraction of a car's PEAK charge
+   rate available at a given state of charge. Real curves differ by model, but
+   the shape (near peak through the low-mid range, tapering hard near full) is
+   broadly shared — enough to make time estimates far better than a flat rate.
+   Scaled by each car's max charge rate, and always capped by the charger. */
+var CURVE = [
+  [0, 0.60], [5, 0.90], [10, 1.00], [20, 0.98], [30, 0.90], [40, 0.82],
+  [50, 0.72], [60, 0.62], [70, 0.50], [80, 0.37], [85, 0.30], [90, 0.22],
+  [95, 0.14], [100, 0.07]
+];
+function curveFactor(soc) {
+  if (soc <= CURVE[0][0]) return CURVE[0][1];
+  for (var i = 1; i < CURVE.length; i++) {
+    if (soc <= CURVE[i][0]) {
+      var a = CURVE[i - 1], b = CURVE[i];
+      return a[1] + (b[1] - a[1]) * (soc - a[0]) / (b[0] - a[0]);
+    }
+  }
+  return CURVE[CURVE.length - 1][1];
+}
+
+/* Minutes to charge from -> to (%) on a charger of chargerKw, integrating the
+   curve in 1% steps: dt = dEnergy / power(soc). Power is the lower of the
+   charger's output and what the car will accept at that SoC. If the car has no
+   max rate set, we fall back to a flat charger-limited rate. */
+function chargeMinutes(car, from, to, chargerKw) {
+  if (to <= from || chargerKw <= 0) return 0;
+  var STEP = 1, dE = car.battery * STEP / 100, mins = 0;
+  for (var s = from; s < to; s += STEP) {
+    var mid = Math.min(100, s + STEP / 2);
+    var power = (car.maxkw && car.maxkw > 0)
+      ? Math.min(chargerKw, car.maxkw * curveFactor(mid))
+      : chargerKw;
+    if (power > 0) mins += (dE / power) * 60;
+  }
+  return mins / EFF;
+}
+
 /* Cap the charger-speed slider at the active car's max rate (no point charging
    faster than the car can take). Falls back to 500 kW if no max is set. */
 function updateSpeedRange() {
@@ -68,8 +106,7 @@ function calc() {
   if (tgt < now) { tgt = now; $("tgt").value = now; }
 
   var kwh = car.battery * (tgt - now) / 100;
-  var rate = Math.min(speed, car.maxkw || speed);
-  var mins = rate > 0 ? (kwh / rate) / EFF * 60 : 0;
+  var mins = chargeMinutes(car, now, tgt, speed);
   var cost = kwh * price / 100;
 
   $("vNow").innerHTML = now + "% <small>· " + milesFor(car, now) + " mi</small>";
@@ -328,8 +365,13 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.1.0";
+var VERSION = "1.2.0";
 var CHANGELOG = [
+  { v: "1.2.0", date: "2026-09-20", notes: [
+    "Charge time now follows a realistic charging curve — power tapers as the battery fills, especially past ~80%",
+    "Estimates are most accurate on fast chargers and when charging to a high percentage",
+    "New “About” panel explaining how the estimate is worked out"
+  ] },
   { v: "1.1.0", date: "2026-09-20", notes: [
     "Sliders now ignore accidental thumb-lift nudges",
     "Version and changelog added to the footer"
@@ -364,6 +406,17 @@ var CHANGELOG = [
   verBtn.addEventListener("click", open);
   $("clogClose").addEventListener("click", close);
   $("clogBackdrop").addEventListener("click", close);
+})();
+
+/* ---------- about ---------- */
+(function initAbout() {
+  var modal = $("about");
+  function onKey(e) { if (e.key === "Escape") close(); }
+  function open() { modal.hidden = false; document.addEventListener("keydown", onKey); }
+  function close() { modal.hidden = true; document.removeEventListener("keydown", onKey); }
+  $("aboutBtn").addEventListener("click", open);
+  $("aboutClose").addEventListener("click", close);
+  $("aboutBackdrop").addEventListener("click", close);
 })();
 
 /* ---------- boot ---------- */
