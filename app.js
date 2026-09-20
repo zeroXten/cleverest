@@ -365,8 +365,12 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.2.2";
+var VERSION = "1.3.0";
 var CHANGELOG = [
+  { v: "1.3.0", date: "2026-09-20", notes: [
+    "Added anonymous, cookie-free usage stats (GoatCounter) — no personal data",
+    "Your cars and settings still stay only on your device"
+  ] },
   { v: "1.2.2", date: "2026-09-20", notes: [
     "Logo now shows the cleverest.autos web address"
   ] },
