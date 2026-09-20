@@ -135,7 +135,7 @@
     <footer class="foot">
       <button class="ver" id="aboutBtn" aria-haspopup="dialog">About</button>
       <span aria-hidden="true"> · </span>
-      <button class="ver" id="verBtn" aria-haspopup="dialog">Version 1.4.0</button>
+      <button class="ver" id="verBtn" aria-haspopup="dialog">Version 1.4.1</button>
       <span aria-hidden="true"> · </span>
       Made by <a href="https://www.linkedin.com/in/zeroxten/" target="_blank" rel="noopener noreferrer">zeroXten</a>
     </footer>
@@ -163,9 +163,11 @@
         <p class="formula">time ≈ Σ ( battery × 1% ÷ power<sub>soc</sub> ) ÷ 0.9</p>
 
         <h3>The charging curve</h3>
-        <p>Every model's real curve is different, and there's no free, reliable database of them — so instead of pretending to know yours, CLEVEREST uses one <b>typical fast-charge shape</b>, scaled to your car's max rate. It stays near peak through the low-to-mid range, then tapers hard as the battery fills:</p>
+        <p>Every model's real curve is different, and there's no free, reliable database of them — so CLEVEREST starts from one <b>typical fast-charge shape</b>, scaled to your car's max rate. But you can <b>tune it per car</b>: open a car on the Cars screen and drag the curve to match your model. Whatever a car's curve is — the default or your custom one — is exactly what its estimate uses.</p>
+        <p>This is the curve for your active car:</p>
         <div id="curveChart" class="curve-chart"></div>
-        <p>That shape is why the estimate mirrors real charging:</p>
+        <p id="curveChartCap" class="chart-cap"></p>
+        <p>The shape is why the estimate mirrors real charging:</p>
         <ul>
           <li><b>AC or slower DC</b> — the charger is the limit the whole way, so it's near-linear (the curve barely matters up to ~80%).</li>
           <li><b>Rapid DC</b> near the car's peak — the curve takes over and the last stretch slows right down.</li>

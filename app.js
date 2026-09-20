@@ -451,8 +451,11 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.4.0";
+var VERSION = "1.4.1";
 var CHANGELOG = [
+  { v: "1.4.1", date: "2026-09-20", notes: [
+    "About panel now shows your active car's actual curve (default or custom) and explains you can adjust it"
+  ] },
   { v: "1.4.0", date: "2026-09-20", notes: [
     "Adjustable charging curve per car — drag the points to match your model for a sharper estimate",
     "Look up your car's real curve via EVKX or EV Database (links in the car editor)"
@@ -517,13 +520,14 @@ var CHANGELOG = [
 function drawCurveChart() {
   var el = $("curveChart");
   if (!el) return;
+  var car = activeCar();
   var W = 340, H = 190, pl = 34, pr = 10, pt = 12, pb = 26;
   var x0 = pl, x1 = W - pr, y0 = H - pb, y1 = pt;
   function X(soc) { return x0 + (soc / 100) * (x1 - x0); }
   function Y(f) { return y0 - f * (y0 - y1); }
 
   var pts = [];
-  for (var s = 0; s <= 100; s += 2) pts.push(X(s).toFixed(1) + "," + Y(curveFactor(null, s)).toFixed(1));
+  for (var s = 0; s <= 100; s += 2) pts.push(X(s).toFixed(1) + "," + Y(curveFactor(car.curve, s)).toFixed(1));
 
   var grid = "";
   [0, 25, 50, 75, 100].forEach(function (g) {
@@ -547,18 +551,24 @@ function drawCurveChart() {
       '<text class="cc-axis" x="' + ((x0 + x1) / 2) + '" y="' + (H - 1) + '">state of charge (%)</text>' +
       '<text class="cc-axis" transform="translate(9,' + ((y0 + y1) / 2) + ') rotate(-90)">power (% of peak)</text>' +
     '</svg>';
+
+  var cap = $("curveChartCap");
+  if (cap) {
+    var custom = car.curve && car.curve.length === CURVE_SOC.length &&
+      car.curve.some(function (v, i) { return Math.abs(v - DEFAULT_CURVE[i]) > 0.001; });
+    cap.textContent = car.name + " — " + (custom ? "your custom curve" : "typical default curve");
+  }
 }
 
 /* ---------- about ---------- */
 (function initAbout() {
   var modal = $("about");
   function onKey(e) { if (e.key === "Escape") close(); }
-  function open() { modal.hidden = false; document.addEventListener("keydown", onKey); }
+  function open() { drawCurveChart(); modal.hidden = false; document.addEventListener("keydown", onKey); }
   function close() { modal.hidden = true; document.removeEventListener("keydown", onKey); }
   $("aboutBtn").addEventListener("click", open);
   $("aboutClose").addEventListener("click", close);
   $("aboutBackdrop").addEventListener("click", close);
-  drawCurveChart();
 })();
 
 /* ---------- boot ---------- */
