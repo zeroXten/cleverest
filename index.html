@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>CleverCalc — EV calculator</title>
-  <meta name="description" content="A simple EV charging calculator: how long, how much, and how far — for the car you drive.">
+  <title>CLEVEREST — EV calculator</title>
+  <meta name="description" content="Simple EV charge estimation — how long, how much, and how far, for the car you drive.">
 
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#06060d">
@@ -13,7 +13,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="CleverCalc">
+  <meta name="apple-mobile-web-app-title" content="CLEVEREST">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -25,8 +25,8 @@
 
     <header class="app-top">
       <div class="brandwrap">
-        <h1 class="brand">CL<span class="ev">EV</span>ERCALC</h1>
-        <p class="brand-tag">charge time · cost · range</p>
+        <h1 class="brand">CL<span class="hl">EV</span>ER<span class="hl">EST</span></h1>
+        <p class="brand-tag">time · cost · range estimation</p>
       </div>
       <div class="cars-col">
         <button class="cars-btn" id="carsBtn" aria-label="Manage cars">
@@ -54,13 +54,13 @@
       <div class="field">
         <div class="flabel"><span class="name">Charger speed</span><span class="val violet" id="vSpeed">50 kW</span></div>
         <input type="range" id="speed" min="3" max="500" value="50" step="1" aria-label="Charger speed (kW)">
-        <div class="scale"><span>3</span><span>150</span><span>350</span><span>500 kW</span></div>
+        <div class="scale" id="speedScale"><span>3</span><span>150</span><span>350</span><span>500 kW</span></div>
       </div>
 
       <div class="field">
         <div class="flabel"><span class="name">Price</span><span class="val yellow" id="vPrice">45p /kWh</span></div>
-        <input type="range" id="price" min="0" max="200" value="45" step="1" aria-label="Electricity price (pence per kWh)">
-        <div class="scale"><span>free</span><span>200p</span></div>
+        <input type="range" id="price" min="0" max="150" value="45" step="1" aria-label="Electricity price (pence per kWh)">
+        <div class="scale"><span>free</span><span>150p</span></div>
       </div>
 
       <section class="result" aria-live="polite">

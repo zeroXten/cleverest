@@ -3,8 +3,8 @@
 /* ---------- constants ---------- */
 var EFF = 0.90; // charging efficiency fudge (energy actually delivered)
 var CAR_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13l1.6-4.2A2 2 0 0 1 7.5 7.5h9a2 2 0 0 1 1.9 1.3L20 13"/><path d="M4 13h16v4h-2a2 2 0 1 1-4 0H10a2 2 0 1 1-4 0H4z"/></svg>';
-var CARS_KEY = "clevercalc.cars.v1";
-var ACTIVE_KEY = "clevercalc.activeCar.v1";
+var CARS_KEY = "cleverest.cars.v1";
+var ACTIVE_KEY = "cleverest.activeCar.v1";
 var DEFAULT_CAR = { id: "demo", name: "Demo EV", battery: 64, eff: 4.0, maxkw: 150 };
 
 /* ---------- storage (defensive) ---------- */
@@ -45,6 +45,19 @@ function fmtTime(mins) {
 function pad(n) { return (n < 10 ? "0" : "") + n; }
 function clock(d) { return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
 function milesFor(car, pct) { return Math.round(car.battery * pct / 100 * car.eff); }
+
+/* Cap the charger-speed slider at the active car's max rate (no point charging
+   faster than the car can take). Falls back to 500 kW if no max is set. */
+function updateSpeedRange() {
+  var car = activeCar();
+  var maxSpeed = (car.maxkw && car.maxkw > 0) ? Math.max(3, Math.round(car.maxkw)) : 500;
+  var sp = $("speed");
+  sp.max = maxSpeed;
+  if (+sp.value > maxSpeed) sp.value = maxSpeed;
+  var m1 = Math.round(maxSpeed / 3), m2 = Math.round(maxSpeed * 2 / 3);
+  $("speedScale").innerHTML =
+    "<span>3</span><span>" + m1 + "</span><span>" + m2 + "</span><span>" + maxSpeed + " kW</span>";
+}
 
 function calc() {
   var car = activeCar();
@@ -126,6 +139,7 @@ function renderCarList() {
       activeId = car.id;
       save(ACTIVE_KEY, activeId);
       renderHeader();
+      updateSpeedRange();
       calc();
       showView("calc");
     });
@@ -213,6 +227,7 @@ $("editCard").addEventListener("submit", function (e) {
   save(CARS_KEY, cars);
   $("editCard").hidden = true;
   renderHeader();
+  updateSpeedRange();
   calc();
   renderCarList();
 });
@@ -225,6 +240,7 @@ $("deleteCar").addEventListener("click", function () {
   editingId = null;
   $("editCard").hidden = true;
   renderHeader();
+  updateSpeedRange();
   calc();
   renderCarList();
 });
@@ -273,4 +289,5 @@ if ("serviceWorker" in navigator) {
 
 /* ---------- boot ---------- */
 renderHeader();
+updateSpeedRange();
 calc();

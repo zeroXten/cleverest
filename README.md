@@ -1,4 +1,4 @@
-# CleverCalc — EV calculator
+# CLEVEREST — EV calculator
 
 A tiny, mobile-first EV charging calculator. Add your car once, then use the
 sliders to see **how long** a charge will take, **when** it'll be ready,
@@ -35,7 +35,7 @@ Then open http://localhost:8000
 ```bash
 git init
 git add .
-git commit -m "CleverCalc"
+git commit -m "CLEVEREST"
 git branch -M main
 git remote add origin git@github.com:<you>/<repo>.git
 git push -u origin main

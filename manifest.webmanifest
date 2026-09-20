@@ -1,7 +1,7 @@
 {
-  "name": "CleverCalc — EV calculator",
-  "short_name": "CleverCalc",
-  "description": "A simple EV charging calculator: how long, how much, and how far.",
+  "name": "CLEVEREST — EV calculator",
+  "short_name": "CLEVEREST",
+  "description": "Simple EV charge estimation: how long, how much, and how far.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

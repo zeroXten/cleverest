@@ -1,5 +1,5 @@
-/* CleverCalc service worker — offline app shell */
-var CACHE = "clevercalc-v1";
+/* CLEVEREST service worker — offline app shell */
+var CACHE = "cleverest-v1";
 var ASSETS = [
   "./",
   "index.html",
