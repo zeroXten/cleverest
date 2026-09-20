@@ -243,51 +243,77 @@ function renderCarList() {
 
 /* ---- per-car charging-curve editor (drag the points) ---- */
 var draftCurve = null;
-var CE = { x0: 12, x1: 308, y0: 128, y1: 12 };
+var CE = { x0: 40, x1: 326, y0: 140, y1: 24 };
+var CE_GRAD =
+  '<stop offset="0" stop-color="#ff2d95"/><stop offset=".2" stop-color="#ff8a00"/>' +
+  '<stop offset=".4" stop-color="#ffe600"/><stop offset=".6" stop-color="#25f4b2"/>' +
+  '<stop offset=".8" stop-color="#2ec5ff"/><stop offset="1" stop-color="#8a5cff"/>';
 function ceX(soc) { return CE.x0 + (soc / 100) * (CE.x1 - CE.x0); }
 function ceY(f) { return CE.y0 - f * (CE.y0 - CE.y1); }
 function ceInvY(y) { return (CE.y0 - y) / (CE.y0 - CE.y1); }
+function cePeak() { var p = parseFloat($("fMax").value); return p > 0 ? p : 0; }
 
 function renderCurveEditor() {
   var el = $("curveEdit");
   if (!el || !draftCurve) return;
-  var grid = "";
-  [0, 50, 100].forEach(function (g) {
-    grid += '<line class="cc-grid" x1="' + ceX(g) + '" y1="' + CE.y1 + '" x2="' + ceX(g) + '" y2="' + CE.y0 + '"/>';
+  var grid = "", ylab = "";
+  [0, 0.25, 0.5, 0.75, 1].forEach(function (f) {
+    var gy = ceY(f);
+    grid += '<line class="cc-grid" x1="' + CE.x0 + '" y1="' + gy + '" x2="' + CE.x1 + '" y2="' + gy + '"/>';
+    ylab += '<text class="ce-ylab" data-f="' + f + '" x="' + (CE.x0 - 6) + '" y="' + (gy + 3) + '"></text>';
   });
-  var hits = "", handles = "";
+  var xlab = "";
+  CURVE_SOC.forEach(function (soc) {
+    var gx = ceX(soc);
+    grid += '<line class="cc-grid" x1="' + gx + '" y1="' + CE.y1 + '" x2="' + gx + '" y2="' + CE.y0 + '"/>';
+    xlab += '<text class="cc-xlab" x="' + gx + '" y="' + (CE.y0 + 14) + '">' + soc + '</text>';
+  });
+  var hits = "", handles = "", vals = "";
   for (var i = 0; i < CURVE_SOC.length; i++) {
-    hits += '<circle class="ce-hit" cx="' + ceX(CURVE_SOC[i]) + '" cy="' + ceY(draftCurve[i]) + '" r="20"/>';
-    handles += '<circle class="ce-handle" cx="' + ceX(CURVE_SOC[i]) + '" cy="' + ceY(draftCurve[i]) + '" r="6"/>';
+    var cx = ceX(CURVE_SOC[i]);
+    hits += '<circle class="ce-hit" cx="' + cx + '" r="20"/>';
+    handles += '<circle class="ce-handle" cx="' + cx + '" r="6"/>';
+    vals += '<text class="ce-val" x="' + cx + '"></text>';
   }
   el.innerHTML =
-    '<svg id="ceSvg" viewBox="0 0 320 148" aria-label="Charging curve editor — drag the points to match your car.">' +
-      '<defs><linearGradient id="ceg" x1="0" x2="1">' +
-        '<stop offset="0" stop-color="#ff2d95"/><stop offset=".2" stop-color="#ff8a00"/>' +
-        '<stop offset=".4" stop-color="#ffe600"/><stop offset=".6" stop-color="#25f4b2"/>' +
-        '<stop offset=".8" stop-color="#2ec5ff"/><stop offset="1" stop-color="#8a5cff"/>' +
-      '</linearGradient></defs>' + grid +
+    '<svg id="ceSvg" viewBox="0 0 340 176" aria-label="Charging curve editor — drag points to set charge power at each state of charge.">' +
+      '<defs><linearGradient id="ceg" x1="0" x2="1">' + CE_GRAD + '</linearGradient></defs>' +
+      grid + ylab + xlab +
+      '<text class="ce-unit" x="' + (CE.x0 - 6) + '" y="' + (CE.y1 - 7) + '"></text>' +
       '<polyline class="ce-line" fill="none" stroke="url(#ceg)" stroke-width="2.5" stroke-linejoin="round"/>' +
-      hits + handles +
-      '<text class="cc-xlab" x="' + ceX(0) + '" y="' + (CE.y0 + 14) + '">0</text>' +
-      '<text class="cc-xlab" x="' + ceX(50) + '" y="' + (CE.y0 + 14) + '">50</text>' +
-      '<text class="cc-xlab" x="' + ceX(100) + '" y="' + (CE.y0 + 14) + '">100% SoC</text>' +
+      hits + handles + vals +
+      '<text class="cc-axis" x="' + ((CE.x0 + CE.x1) / 2) + '" y="174">state of charge (%)</text>' +
     '</svg>';
   updateCurveGraphics();
   wireCurveDrag();
 }
 
-function updateCurveGraphics() {
+function updateCurveGraphics(activeIdx) {
   var svg = $("ceSvg");
   if (!svg || !draftCurve) return;
+  var peak = cePeak();
+
   var pts = [ceX(0) + "," + ceY(draftCurve[0])];
   for (var i = 0; i < CURVE_SOC.length; i++) pts.push(ceX(CURVE_SOC[i]) + "," + ceY(draftCurve[i]));
   svg.querySelector(".ce-line").setAttribute("points", pts.join(" "));
-  var hd = svg.querySelectorAll(".ce-handle"), ht = svg.querySelectorAll(".ce-hit");
+
+  var hd = svg.querySelectorAll(".ce-handle"), ht = svg.querySelectorAll(".ce-hit"), vl = svg.querySelectorAll(".ce-val");
   for (var k = 0; k < CURVE_SOC.length; k++) {
-    var cy = ceY(draftCurve[k]);
+    var f = draftCurve[k], cy = ceY(f);
     hd[k].setAttribute("cy", cy); ht[k].setAttribute("cy", cy);
+    vl[k].textContent = peak > 0 ? Math.round(peak * f) : Math.round(f * 100) + "%";
+    var ly = cy - 10; if (ly < CE.y1 + 2) ly = cy + 17;
+    vl[k].setAttribute("y", ly);
+    if (activeIdx === k) vl[k].setAttribute("class", "ce-val active");
+    else vl[k].setAttribute("class", "ce-val");
   }
+
+  svg.querySelectorAll(".ce-ylab").forEach(function (t) {
+    var f = parseFloat(t.getAttribute("data-f"));
+    t.textContent = peak > 0 ? Math.round(peak * f) : Math.round(f * 100);
+  });
+  var unitEl = svg.querySelector(".ce-unit");
+  if (unitEl) unitEl.textContent = peak > 0 ? "kW" : "%";
 }
 
 function wireCurveDrag() {
@@ -309,15 +335,15 @@ function wireCurveDrag() {
   }
   svg.addEventListener("pointerdown", function (e) {
     var t = toPoint(e); active = nearest(t.x);
-    draftCurve[active] = +t.f.toFixed(3); updateCurveGraphics();
+    draftCurve[active] = +t.f.toFixed(3); updateCurveGraphics(active);
     try { svg.setPointerCapture(e.pointerId); } catch (_) {}
     e.preventDefault();
   });
   svg.addEventListener("pointermove", function (e) {
     if (active === null) return;
-    draftCurve[active] = +toPoint(e).f.toFixed(3); updateCurveGraphics(); e.preventDefault();
+    draftCurve[active] = +toPoint(e).f.toFixed(3); updateCurveGraphics(active); e.preventDefault();
   });
-  function end() { active = null; }
+  function end() { active = null; updateCurveGraphics(); }
   svg.addEventListener("pointerup", end);
   svg.addEventListener("pointercancel", end);
 }
@@ -357,6 +383,7 @@ function openAdd() {
 $("addCarBtn").addEventListener("click", openAdd);
 $("cancelEdit").addEventListener("click", function () { $("editCard").hidden = true; });
 $("curveReset").addEventListener("click", function () { draftCurve = DEFAULT_CURVE.slice(); updateCurveGraphics(); });
+$("fMax").addEventListener("input", function () { if (!$("editCard").hidden) updateCurveGraphics(); });
 
 function showErr(msg) {
   var el = $("formErr");
@@ -451,8 +478,11 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.4.1";
+var VERSION = "1.4.2";
 var CHANGELOG = [
+  { v: "1.4.2", date: "2026-09-20", notes: [
+    "Curve editor now shows power in kW — a labelled axis plus the value above each point — so you're not guessing"
+  ] },
   { v: "1.4.1", date: "2026-09-20", notes: [
     "About panel now shows your active car's actual curve (default or custom) and explains you can adjust it"
   ] },
