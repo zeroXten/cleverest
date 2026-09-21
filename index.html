@@ -51,8 +51,16 @@
         <div class="scale"><span>0%</span><span>100%</span></div>
       </div>
 
+      <div class="section-head">
+        <span class="section-title">Charger</span>
+        <button class="cars-btn" id="chargersBtn" aria-label="Saved chargers">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4 13h6l-1 9 9-12h-6z"/></svg>
+          <span id="chargerActive">Chargers</span>
+        </button>
+      </div>
+
       <div class="field">
-        <div class="flabel"><span class="name">Charger speed</span><span class="val violet" id="vSpeed">50 kW</span></div>
+        <div class="flabel"><span class="name">Speed</span><span class="val violet" id="vSpeed">50 kW</span></div>
         <input type="range" id="speed" min="3" max="500" value="50" step="1" aria-label="Charger speed (kW)">
         <div class="scale" id="speedScale"><span>3</span><span>150</span><span>350</span><span>500 kW</span></div>
       </div>
@@ -132,10 +140,47 @@
       </form>
     </main>
 
+    <!-- CHARGERS VIEW -->
+    <main class="view" id="viewChargers" hidden>
+      <div class="cars-head">
+        <h2 class="view-title">Your chargers</h2>
+        <button class="icon-btn" id="chgDoneBtn" aria-label="Back to calculator">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+          Done
+        </button>
+      </div>
+
+      <div id="chargerList"></div>
+
+      <button class="btn ghost add" id="addChargerBtn">+ Add another charger</button>
+
+      <form class="edit-card" id="chgEditCard" hidden>
+        <p class="divider" id="chgEditTitle">Edit charger</p>
+        <div class="field">
+          <div class="flabel"><span class="name">Name</span></div>
+          <input type="text" id="cName" placeholder="St Albans Morrisons" autocomplete="off">
+        </div>
+        <div class="field">
+          <div class="flabel"><span class="name">Charge speed</span></div>
+          <div class="unit"><input type="number" id="cSpeed" min="1" step="1" inputmode="numeric" placeholder="50"><span class="u">kW</span></div>
+        </div>
+        <div class="field">
+          <div class="flabel"><span class="name">Price</span></div>
+          <div class="unit"><input type="number" id="cPrice" min="0" step="0.1" inputmode="decimal" placeholder="45"><span class="u">p/kWh</span></div>
+        </div>
+        <p class="form-err" id="chgErr" hidden></p>
+        <button type="submit" class="btn">Save charger</button>
+        <div class="edit-actions">
+          <button type="button" class="linkbtn" id="chgCancel">Cancel</button>
+          <button type="button" class="linkbtn danger" id="chgDelete" hidden>Delete charger</button>
+        </div>
+      </form>
+    </main>
+
     <footer class="foot">
       <button class="ver" id="aboutBtn" aria-haspopup="dialog">About</button>
       <span aria-hidden="true"> · </span>
-      <button class="ver" id="verBtn" aria-haspopup="dialog">Version 1.4.3</button>
+      <button class="ver" id="verBtn" aria-haspopup="dialog">Version 1.5.0</button>
       <span aria-hidden="true"> · </span>
       Made by <a href="https://www.linkedin.com/in/zeroxten/" target="_blank" rel="noopener noreferrer">zeroXten</a>
     </footer>

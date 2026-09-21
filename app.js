@@ -3,9 +3,16 @@
 /* ---------- constants ---------- */
 var EFF = 0.90; // charging efficiency fudge (energy actually delivered)
 var CAR_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13l1.6-4.2A2 2 0 0 1 7.5 7.5h9a2 2 0 0 1 1.9 1.3L20 13"/><path d="M4 13h16v4h-2a2 2 0 1 1-4 0H10a2 2 0 1 1-4 0H4z"/></svg>';
+var BOLT_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4 13h6l-1 9 9-12h-6z"/></svg>';
 var CARS_KEY = "cleverest.cars.v1";
 var ACTIVE_KEY = "cleverest.activeCar.v1";
 var DEFAULT_CAR = { id: "demo", name: "Demo EV", battery: 64, eff: 4.0, maxkw: 150 };
+var CHARGERS_KEY = "cleverest.chargers.v1";
+var ACTIVE_CHARGER_KEY = "cleverest.activeCharger.v1";
+var DEFAULT_CHARGERS = [
+  { id: "home", name: "Home 7kW", kw: 7, price: 7 },
+  { id: "rapid", name: "Public rapid 50kW", kw: 50, price: 45 }
+];
 
 /* ---------- storage (defensive) ---------- */
 function load(key, fallback) {
@@ -26,6 +33,13 @@ if (!Array.isArray(cars) || cars.length === 0) {
 }
 var activeId = load(ACTIVE_KEY, cars[0].id);
 if (!cars.some(function (c) { return c.id === activeId; })) activeId = cars[0].id;
+
+var chargers = load(CHARGERS_KEY, null);
+if (!Array.isArray(chargers)) {
+  chargers = DEFAULT_CHARGERS.map(function (c) { return Object.assign({}, c); });
+  save(CHARGERS_KEY, chargers);
+}
+var activeChargerId = load(ACTIVE_CHARGER_KEY, null);
 
 function activeCar() {
   return cars.find(function (c) { return c.id === activeId; }) || cars[0];
@@ -208,11 +222,15 @@ function renderHeader() {
 function showView(which) {
   $("viewCalc").hidden = which !== "calc";
   $("viewCars").hidden = which !== "cars";
+  $("viewChargers").hidden = which !== "chargers";
   if (which === "cars") renderCarList();
+  if (which === "chargers") renderChargerList();
   window.scrollTo(0, 0);
 }
 $("carsBtn").addEventListener("click", function () { showView("cars"); });
 $("doneBtn").addEventListener("click", function () { showView("calc"); });
+$("chargersBtn").addEventListener("click", function () { showView("chargers"); });
+$("chgDoneBtn").addEventListener("click", function () { showView("calc"); });
 
 /* ---------- cars manager ---------- */
 var editingId = null; // null = adding new
@@ -469,6 +487,127 @@ $("deleteCar").addEventListener("click", function () {
   renderCarList();
 });
 
+/* ---------- chargers manager ---------- */
+var editingChargerId = null;
+
+function renderChargerLabel() {
+  var c = chargers.find(function (x) { return x.id === activeChargerId; });
+  $("chargerActive").textContent = c ? c.name : "Chargers";
+}
+
+function applyCharger(c) {
+  activeChargerId = c.id;
+  save(ACTIVE_CHARGER_KEY, activeChargerId);
+  $("speed").value = Math.min(c.kw, +$("speed").max);
+  $("price").value = Math.max(0, Math.min(c.price, +$("price").max));
+  renderChargerLabel();
+  calc();
+  showView("calc");
+}
+
+function renderChargerList() {
+  var list = $("chargerList");
+  list.innerHTML = "";
+  chargers.forEach(function (c) {
+    var row = document.createElement("div");
+    row.className = "carrow" + (c.id === activeChargerId ? " active" : "");
+
+    var ic = document.createElement("div");
+    ic.className = "ic";
+    ic.innerHTML = BOLT_SVG;
+
+    var meta = document.createElement("button");
+    meta.className = "meta";
+    meta.style.cssText = "background:none;border:none;padding:0;text-align:left;cursor:pointer;color:inherit;font:inherit;min-width:0";
+    meta.innerHTML = '<p class="nm"></p><p class="mt"></p>';
+    meta.querySelector(".nm").textContent = c.name;
+    meta.querySelector(".mt").textContent = c.kw + " kW · " + c.price + "p/kWh";
+    meta.addEventListener("click", function () { applyCharger(c); });
+
+    var right = document.createElement("div");
+    right.style.cssText = "flex:none;display:flex;align-items:center;gap:8px";
+    if (c.id === activeChargerId) {
+      var tk = document.createElement("span");
+      tk.className = "tick"; tk.textContent = "✓ active";
+      right.appendChild(tk);
+    }
+    var edit = document.createElement("button");
+    edit.className = "editlink"; edit.textContent = "Edit";
+    edit.addEventListener("click", function (e) { e.stopPropagation(); openChgEdit(c.id); });
+    right.appendChild(edit);
+
+    row.appendChild(ic); row.appendChild(meta); row.appendChild(right);
+    list.appendChild(row);
+  });
+}
+
+function openChgEdit(id) {
+  editingChargerId = id;
+  var c = chargers.find(function (x) { return x.id === id; });
+  $("chgEditTitle").textContent = "Edit charger";
+  $("cName").value = c.name;
+  $("cSpeed").value = c.kw;
+  $("cPrice").value = c.price;
+  $("chgDelete").hidden = false;
+  $("chgErr").hidden = true;
+  $("chgEditCard").hidden = false;
+  $("chgEditCard").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function openChgAdd() {
+  editingChargerId = null;
+  $("chgEditTitle").textContent = "Add a charger";
+  $("cName").value = ""; $("cSpeed").value = ""; $("cPrice").value = "";
+  $("chgDelete").hidden = true;
+  $("chgErr").hidden = true;
+  $("chgEditCard").hidden = false;
+  $("chgEditCard").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  $("cName").focus();
+}
+
+$("addChargerBtn").addEventListener("click", openChgAdd);
+$("chgCancel").addEventListener("click", function () { $("chgEditCard").hidden = true; });
+
+function chgShowErr(m) { var e = $("chgErr"); e.textContent = m; e.hidden = false; }
+
+$("chgEditCard").addEventListener("submit", function (e) {
+  e.preventDefault();
+  var name = $("cName").value.trim();
+  var kw = parseFloat($("cSpeed").value);
+  var price = parseFloat($("cPrice").value);
+  if (!name) return chgShowErr("Give the charger a name.");
+  if (!(kw > 0)) return chgShowErr("Enter the charge speed in kW.");
+  if (!(price >= 0)) return chgShowErr("Enter the price in p/kWh (0 for free).");
+
+  if (editingChargerId) {
+    var c = chargers.find(function (x) { return x.id === editingChargerId; });
+    c.name = name; c.kw = kw; c.price = price;
+  } else {
+    chargers.push({ id: "chg-" + Date.now().toString(36), name: name, kw: kw, price: price });
+  }
+  save(CHARGERS_KEY, chargers);
+  $("chgEditCard").hidden = true;
+  renderChargerLabel();
+  renderChargerList();
+});
+
+$("chgDelete").addEventListener("click", function () {
+  if (!editingChargerId) return;
+  chargers = chargers.filter(function (x) { return x.id !== editingChargerId; });
+  if (activeChargerId === editingChargerId) { activeChargerId = null; save(ACTIVE_CHARGER_KEY, null); renderChargerLabel(); }
+  save(CHARGERS_KEY, chargers);
+  editingChargerId = null;
+  $("chgEditCard").hidden = true;
+  renderChargerList();
+});
+
+/* dragging speed/price by hand means you're no longer on a saved charger */
+["speed", "price"].forEach(function (id) {
+  $(id).addEventListener("input", function () {
+    if (activeChargerId !== null) { activeChargerId = null; save(ACTIVE_CHARGER_KEY, null); renderChargerLabel(); }
+  });
+});
+
 /* ---------- PWA: install button ---------- */
 var deferredPrompt = null;
 var installBtn = $("installBtn");
@@ -512,8 +651,12 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.4.3";
+var VERSION = "1.5.0";
 var CHANGELOG = [
+  { v: "1.5.0", date: "2026-09-21", notes: [
+    "Save your favourite chargers (name, speed, price) and apply one in a tap",
+    "Managed on their own page, like cars — pick one, then just set your battery levels"
+  ] },
   { v: "1.4.3", date: "2026-09-21", notes: [
     "Curve editor points are now evenly spaced (0–100%)",
     "A live readout shows the value while you drag, so your finger no longer hides it"
@@ -641,5 +784,13 @@ function drawCurveChart() {
 
 /* ---------- boot ---------- */
 renderHeader();
+renderChargerLabel();
 updateSpeedRange();
+(function () {
+  var ac = chargers.find(function (x) { return x.id === activeChargerId; });
+  if (ac) {
+    $("speed").value = Math.min(ac.kw, +$("speed").max);
+    $("price").value = Math.max(0, Math.min(ac.price, +$("price").max));
+  }
+})();
 calc();
