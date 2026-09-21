@@ -695,8 +695,11 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.5.2";
+var VERSION = "1.5.3";
 var CHANGELOG = [
+  { v: "1.5.3", date: "2026-09-21", notes: [
+    "Fixed the selected chip's glow being clipped at the edge of the scrolling row"
+  ] },
   { v: "1.5.2", date: "2026-09-21", notes: [
     "Car and charger chips scroll sideways instead of wrapping onto multiple rows"
   ] },
