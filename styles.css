@@ -71,9 +71,16 @@ body{
 .car-current .cdot{width:7px;height:7px;border-radius:50%;background:var(--rainbow);flex:none}
 .car-current span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-/* charger section header (with saved-chargers button) */
+/* charger section */
 .section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:22px 0 12px}
 .section-title{font-family:var(--font-mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim)}
+
+/* saved-charger selection chips */
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}
+.chip{font-family:var(--font-mono);font-size:12px;padding:9px 13px;border-radius:11px;border:1px solid var(--line-2);background:var(--panel);color:var(--ink-dim);cursor:pointer;white-space:nowrap}
+.chip:hover{color:var(--ink)}
+.chip.active{border-color:transparent;color:#fff;background:linear-gradient(180deg,rgba(46,197,255,.22),rgba(138,92,255,.22));box-shadow:0 0 0 1px var(--c5),0 0 18px -6px var(--c5)}
+.chips-empty{font-size:12px;color:var(--ink-faint);margin:0}
 
 /* fields + sliders */
 .field{margin-bottom:18px}

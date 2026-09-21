@@ -33,12 +33,20 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 13l1.6-4.2A2 2 0 0 1 7.5 7.5h9a2 2 0 0 1 1.9 1.3L20 13"/><path d="M4 13h16v4h-2a2 2 0 1 1-4 0H10a2 2 0 1 1-4 0H4z"/></svg>
           Cars <span class="count" id="carCount">1</span>
         </button>
-        <p class="car-current" id="carCurrent"><span class="cdot"></span><span id="carCurrentName">Demo EV</span></p>
+        <button class="cars-btn" id="chargersBtn" aria-label="Manage chargers">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4 13h6l-1 9 9-12h-6z"/></svg>
+          Chargers <span class="count" id="chargerCount"></span>
+        </button>
       </div>
     </header>
 
     <!-- CALCULATOR VIEW -->
     <main class="view" id="viewCalc">
+      <div class="section-head">
+        <span class="section-title">Car</span>
+      </div>
+      <div class="chips" id="carChips"></div>
+
       <div class="field">
         <div class="flabel"><span class="name">Battery now</span><span class="val pink" id="vNow">20% <small>· 51 mi</small></span></div>
         <input type="range" id="now" min="0" max="100" value="20" step="1" aria-label="Battery level now (%)">
@@ -53,11 +61,8 @@
 
       <div class="section-head">
         <span class="section-title">Charger</span>
-        <button class="cars-btn" id="chargersBtn" aria-label="Saved chargers">
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4 13h6l-1 9 9-12h-6z"/></svg>
-          <span id="chargerActive">Chargers</span>
-        </button>
       </div>
+      <div class="chips" id="chargerChips"></div>
 
       <div class="field">
         <div class="flabel"><span class="name">Speed</span><span class="val violet" id="vSpeed">50 kW</span></div>
@@ -180,7 +185,7 @@
     <footer class="foot">
       <button class="ver" id="aboutBtn" aria-haspopup="dialog">About</button>
       <span aria-hidden="true"> · </span>
-      <button class="ver" id="verBtn" aria-haspopup="dialog">Version 1.5.0</button>
+      <button class="ver" id="verBtn" aria-haspopup="dialog">Version 1.5.1</button>
       <span aria-hidden="true"> · </span>
       Made by <a href="https://www.linkedin.com/in/zeroxten/" target="_blank" rel="noopener noreferrer">zeroXten</a>
     </footer>

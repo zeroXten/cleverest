@@ -214,8 +214,30 @@ function addSettleGuard(slider) {
 
 /* ---------- header / active car ---------- */
 function renderHeader() {
-  $("carCurrentName").textContent = activeCar().name;
   $("carCount").textContent = String(cars.length);
+}
+
+/* Car selection chips on the main screen (configuration lives on the Cars page). */
+function renderCarChips() {
+  var wrap = $("carChips");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+  cars.forEach(function (c) {
+    var b = document.createElement("button");
+    b.className = "chip" + (c.id === activeId ? " active" : "");
+    b.textContent = c.name;
+    b.addEventListener("click", function () { selectCar(c.id); });
+    wrap.appendChild(b);
+  });
+}
+
+function selectCar(id) {
+  activeId = id;
+  save(ACTIVE_KEY, activeId);
+  renderHeader();
+  renderCarChips();
+  updateSpeedRange();
+  calc();
 }
 
 /* ---------- views ---------- */
@@ -253,21 +275,14 @@ function renderCarList() {
     meta.querySelector(".nm").textContent = car.name;
     meta.querySelector(".mt").textContent =
       car.battery + " kWh · " + car.eff + " mi/kWh" + (car.maxkw ? " · " + car.maxkw + " kW" : "");
-    meta.addEventListener("click", function () {
-      activeId = car.id;
-      save(ACTIVE_KEY, activeId);
-      renderHeader();
-      updateSpeedRange();
-      calc();
-      showView("calc");
-    });
+    meta.addEventListener("click", function () { openEdit(car.id); });
 
     var right = document.createElement("div");
     right.style.cssText = "flex:none;display:flex;align-items:center;gap:8px";
     if (car.id === activeId) {
       var tick = document.createElement("span");
       tick.className = "tick";
-      tick.textContent = "✓ active";
+      tick.textContent = "✓ in use";
       right.appendChild(tick);
     }
     var edit = document.createElement("button");
@@ -469,6 +484,7 @@ $("editCard").addEventListener("submit", function (e) {
   save(CARS_KEY, cars);
   $("editCard").hidden = true;
   renderHeader();
+  renderCarChips();
   updateSpeedRange();
   calc();
   renderCarList();
@@ -482,6 +498,7 @@ $("deleteCar").addEventListener("click", function () {
   editingId = null;
   $("editCard").hidden = true;
   renderHeader();
+  renderCarChips();
   updateSpeedRange();
   calc();
   renderCarList();
@@ -490,9 +507,28 @@ $("deleteCar").addEventListener("click", function () {
 /* ---------- chargers manager ---------- */
 var editingChargerId = null;
 
-function renderChargerLabel() {
-  var c = chargers.find(function (x) { return x.id === activeChargerId; });
-  $("chargerActive").textContent = c ? c.name : "Chargers";
+/* Selection chips on the main screen (configuration lives on the Chargers page). */
+function renderChargerChips() {
+  var wrap = $("chargerChips");
+  if (wrap) {
+    wrap.innerHTML = "";
+    if (!chargers.length) {
+      var hint = document.createElement("p");
+      hint.className = "chips-empty";
+      hint.textContent = "No saved chargers yet — add some from the Chargers button.";
+      wrap.appendChild(hint);
+    } else {
+      chargers.forEach(function (c) {
+        var b = document.createElement("button");
+        b.className = "chip" + (c.id === activeChargerId ? " active" : "");
+        b.textContent = c.name;
+        b.addEventListener("click", function () { applyCharger(c); });
+        wrap.appendChild(b);
+      });
+    }
+  }
+  var cnt = $("chargerCount");
+  if (cnt) cnt.textContent = String(chargers.length);
 }
 
 function applyCharger(c) {
@@ -500,9 +536,8 @@ function applyCharger(c) {
   save(ACTIVE_CHARGER_KEY, activeChargerId);
   $("speed").value = Math.min(c.kw, +$("speed").max);
   $("price").value = Math.max(0, Math.min(c.price, +$("price").max));
-  renderChargerLabel();
+  renderChargerChips();
   calc();
-  showView("calc");
 }
 
 function renderChargerList() {
@@ -522,13 +557,13 @@ function renderChargerList() {
     meta.innerHTML = '<p class="nm"></p><p class="mt"></p>';
     meta.querySelector(".nm").textContent = c.name;
     meta.querySelector(".mt").textContent = c.kw + " kW · " + c.price + "p/kWh";
-    meta.addEventListener("click", function () { applyCharger(c); });
+    meta.addEventListener("click", function () { openChgEdit(c.id); });
 
     var right = document.createElement("div");
     right.style.cssText = "flex:none;display:flex;align-items:center;gap:8px";
     if (c.id === activeChargerId) {
       var tk = document.createElement("span");
-      tk.className = "tick"; tk.textContent = "✓ active";
+      tk.className = "tick"; tk.textContent = "✓ in use";
       right.appendChild(tk);
     }
     var edit = document.createElement("button");
@@ -587,24 +622,33 @@ $("chgEditCard").addEventListener("submit", function (e) {
   }
   save(CHARGERS_KEY, chargers);
   $("chgEditCard").hidden = true;
-  renderChargerLabel();
+  if (editingChargerId && editingChargerId === activeChargerId) {
+    var ac = chargers.find(function (x) { return x.id === activeChargerId; });
+    if (ac) {
+      $("speed").value = Math.min(ac.kw, +$("speed").max);
+      $("price").value = Math.max(0, Math.min(ac.price, +$("price").max));
+      calc();
+    }
+  }
+  renderChargerChips();
   renderChargerList();
 });
 
 $("chgDelete").addEventListener("click", function () {
   if (!editingChargerId) return;
   chargers = chargers.filter(function (x) { return x.id !== editingChargerId; });
-  if (activeChargerId === editingChargerId) { activeChargerId = null; save(ACTIVE_CHARGER_KEY, null); renderChargerLabel(); }
+  if (activeChargerId === editingChargerId) { activeChargerId = null; save(ACTIVE_CHARGER_KEY, null); }
   save(CHARGERS_KEY, chargers);
   editingChargerId = null;
   $("chgEditCard").hidden = true;
+  renderChargerChips();
   renderChargerList();
 });
 
-/* dragging speed/price by hand means you're no longer on a saved charger */
+/* dragging speed/price by hand deselects the current chip (now "custom") */
 ["speed", "price"].forEach(function (id) {
   $(id).addEventListener("input", function () {
-    if (activeChargerId !== null) { activeChargerId = null; save(ACTIVE_CHARGER_KEY, null); renderChargerLabel(); }
+    if (activeChargerId !== null) { activeChargerId = null; save(ACTIVE_CHARGER_KEY, null); renderChargerChips(); }
   });
 });
 
@@ -651,8 +695,12 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.5.0";
+var VERSION = "1.5.1";
 var CHANGELOG = [
+  { v: "1.5.1", date: "2026-09-21", notes: [
+    "Pick your car and charger from quick chips on the main screen",
+    "Manage them from the Cars and Chargers buttons up top; adjust a slider to go back to a custom charger"
+  ] },
   { v: "1.5.0", date: "2026-09-21", notes: [
     "Save your favourite chargers (name, speed, price) and apply one in a tap",
     "Managed on their own page, like cars — pick one, then just set your battery levels"
@@ -784,7 +832,8 @@ function drawCurveChart() {
 
 /* ---------- boot ---------- */
 renderHeader();
-renderChargerLabel();
+renderCarChips();
+renderChargerChips();
 updateSpeedRange();
 (function () {
   var ac = chargers.find(function (x) { return x.id === activeChargerId; });
