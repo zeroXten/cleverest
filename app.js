@@ -25,6 +25,43 @@ function save(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
 }
 
+/* ---------- preferences: units + currency ---------- */
+var PREFS_KEY = "cleverest.prefs.v1";
+var CURRENCIES = { GBP: { symbol: "£", minor: "p" }, EUR: { symbol: "€", minor: "c" }, USD: { symbol: "$", minor: "¢" } };
+var KM_PER_MI = 1.609344;
+
+function detectPrefs() {
+  var loc = (navigator.languages && navigator.languages[0]) || navigator.language || "en-GB";
+  var region = "";
+  try { region = new Intl.Locale(loc).maximize().region || ""; }
+  catch (e) { var m = /[-_]([A-Za-z]{2})\b/.exec(loc); region = m ? m[1] : ""; }
+  region = region.toUpperCase();
+  var euro = { AT:1,BE:1,HR:1,CY:1,EE:1,FI:1,FR:1,DE:1,GR:1,IE:1,IT:1,LV:1,LT:1,LU:1,MT:1,NL:1,PT:1,SK:1,SI:1,ES:1 };
+  return {
+    unit: (region === "GB" || region === "US") ? "mi" : "km",
+    currency: region === "GB" ? "GBP" : (euro[region] ? "EUR" : "USD"),
+    priceMax: 150
+  };
+}
+
+var prefs = load(PREFS_KEY, null);
+if (!prefs || !CURRENCIES[prefs.currency] || (prefs.unit !== "mi" && prefs.unit !== "km")) {
+  prefs = detectPrefs();
+  save(PREFS_KEY, prefs);
+}
+if (!(prefs.priceMax > 0)) { prefs.priceMax = 150; save(PREFS_KEY, prefs); }
+
+function cur() { return CURRENCIES[prefs.currency]; }
+function isKm() { return prefs.unit === "km"; }
+function distUnit() { return isKm() ? "km" : "mi"; }
+function distWord() { return isKm() ? "km" : "miles"; }
+function toDisp(mi) { return isKm() ? mi * KM_PER_MI : mi; }          // internal miles -> display distance
+function toDispEff(effMi) { return isKm() ? effMi * KM_PER_MI : effMi; } // internal mi/kWh -> display eff
+function fromDispEff(v) { return isKm() ? v / KM_PER_MI : v; }        // display eff -> internal mi/kWh
+function money(v) { return cur().symbol + v.toFixed(2); }             // v in major units
+function round1(n) { return Math.round(n * 10) / 10; }
+function fmtEff(effMi) { return round1(toDispEff(effMi)) + (isKm() ? " km/kWh" : " mi/kWh"); }
+
 /* ---------- state ---------- */
 var cars = load(CARS_KEY, null);
 if (!Array.isArray(cars) || cars.length === 0) {
@@ -146,10 +183,10 @@ function calc() {
   var mins = chargeMinutes(car, now, tgt, speed);
   var cost = kwh * price / 100;
 
-  $("vNow").innerHTML = now + "% <small>· " + milesFor(car, now) + " mi</small>";
-  $("vTgt").innerHTML = tgt + "% <small>· " + milesFor(car, tgt) + " mi</small>";
+  $("vNow").innerHTML = now + "% <small>· " + Math.round(toDisp(milesFor(car, now))) + " " + distUnit() + "</small>";
+  $("vTgt").innerHTML = tgt + "% <small>· " + Math.round(toDisp(milesFor(car, tgt))) + " " + distUnit() + "</small>";
   $("vSpeed").textContent = speed + " kW";
-  $("vPrice").textContent = price + "p /kWh";
+  $("vPrice").textContent = price + cur().minor + " /kWh";
 
   if (kwh <= 0) {
     $("rHeadline").innerHTML = "ALREADY AT " + tgt + "%";
@@ -162,10 +199,16 @@ function calc() {
     $("rSub").textContent = now + "% → " + tgt + "% · +" + kwh.toFixed(1) + " kWh";
   }
 
-  $("rRange").textContent = milesFor(car, tgt) + " miles";
-  $("rAdded").textContent = "+" + (milesFor(car, tgt) - milesFor(car, now)) + " miles added";
+  var rngTgt = Math.round(toDisp(milesFor(car, tgt)));
+  var rngNow = Math.round(toDisp(milesFor(car, now)));
+  $("rRange").textContent = rngTgt + " " + distWord();
+  $("rAdded").textContent = "+" + (rngTgt - rngNow) + " " + distWord() + " added";
   $("rKwh").textContent = kwh.toFixed(1) + " kWh";
-  $("rCost").textContent = "£" + cost.toFixed(2);
+  $("rCost").textContent = money(cost);
+
+  var addedDisp = toDisp(car.battery * Math.max(0, tgt - now) / 100 * car.eff); // display-distance added
+  $("rPerDistLabel").textContent = "Per " + distUnit();
+  $("rPerDist").textContent = addedDisp > 0 ? round1(cost / addedDisp * 100) + cur().minor + "/" + distUnit() : "—";
 
   renderCompare();
 }
@@ -216,7 +259,7 @@ function addSettleGuard(slider) {
 
 /* ---------- header / active car ---------- */
 function renderHeader() {
-  $("carCount").textContent = String(cars.length);
+  var el = $("mCarCount"); if (el) el.textContent = String(cars.length);
 }
 
 /* Car selection chips on the main screen (configuration lives on the Cars page). */
@@ -247,14 +290,67 @@ function showView(which) {
   $("viewCalc").hidden = which !== "calc";
   $("viewCars").hidden = which !== "cars";
   $("viewChargers").hidden = which !== "chargers";
+  $("viewPrefs").hidden = which !== "prefs";
   if (which === "cars") renderCarList();
   if (which === "chargers") renderChargerList();
+  if (which === "prefs") renderPrefs();
   window.scrollTo(0, 0);
 }
-$("carsBtn").addEventListener("click", function () { showView("cars"); });
 $("doneBtn").addEventListener("click", function () { showView("calc"); });
-$("chargersBtn").addEventListener("click", function () { showView("chargers"); });
 $("chgDoneBtn").addEventListener("click", function () { showView("calc"); });
+$("prefsDoneBtn").addEventListener("click", function () { showView("calc"); });
+
+/* ---------- hamburger menu ---------- */
+function closeMenu() { $("menuSheet").hidden = true; $("menuBtn").setAttribute("aria-expanded", "false"); }
+$("menuBtn").addEventListener("click", function (e) {
+  e.stopPropagation();
+  var willOpen = $("menuSheet").hidden;
+  $("menuSheet").hidden = !willOpen;
+  $("menuBtn").setAttribute("aria-expanded", String(willOpen));
+});
+$("menuSheet").addEventListener("click", function (e) {
+  var b = e.target.closest(".menu-item"); if (!b) return;
+  var go = b.getAttribute("data-go");
+  closeMenu();
+  if (go === "about") openAbout();
+  else showView(go);
+});
+document.addEventListener("click", function (e) {
+  if (!$("menuSheet").hidden && !e.target.closest(".menu")) closeMenu();
+});
+document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeMenu(); });
+
+/* ---------- preferences ---------- */
+function applyPriceMax() {
+  var sp = $("price");
+  sp.max = prefs.priceMax;
+  if (+sp.value > prefs.priceMax) sp.value = prefs.priceMax;
+  var pm = $("priceMax"); if (pm) pm.textContent = prefs.priceMax + cur().minor;
+}
+function renderPrefs() {
+  Array.prototype.forEach.call($("segUnit").children, function (b) { b.classList.toggle("on", b.getAttribute("data-v") === prefs.unit); });
+  Array.prototype.forEach.call($("segCurrency").children, function (b) { b.classList.toggle("on", b.getAttribute("data-v") === prefs.currency); });
+  $("fPriceMax").value = prefs.priceMax;
+  $("fPriceMaxUnit").textContent = cur().minor + "/kWh";
+}
+function refreshUnits() {
+  applyPriceMax();
+  calc();
+  renderCarList();
+  renderChargerList();
+}
+$("segUnit").addEventListener("click", function (e) {
+  var b = e.target.closest("button"); if (!b) return;
+  prefs.unit = b.getAttribute("data-v"); save(PREFS_KEY, prefs); renderPrefs(); refreshUnits();
+});
+$("segCurrency").addEventListener("click", function (e) {
+  var b = e.target.closest("button"); if (!b) return;
+  prefs.currency = b.getAttribute("data-v"); save(PREFS_KEY, prefs); renderPrefs(); refreshUnits();
+});
+$("fPriceMax").addEventListener("input", function () {
+  var v = parseInt(this.value, 10);
+  if (v >= 1) { prefs.priceMax = v; save(PREFS_KEY, prefs); applyPriceMax(); calc(); }
+});
 
 /* ---------- cars manager ---------- */
 var editingId = null; // null = adding new
@@ -276,7 +372,7 @@ function renderCarList() {
     meta.innerHTML = '<p class="nm"></p><p class="mt"></p>';
     meta.querySelector(".nm").textContent = car.name;
     meta.querySelector(".mt").textContent =
-      car.battery + " kWh · " + car.eff + " mi/kWh" + (car.maxkw ? " · " + car.maxkw + " kW" : "");
+      car.battery + " kWh · " + fmtEff(car.eff) + (car.maxkw ? " · " + car.maxkw + " kW" : "");
     meta.addEventListener("click", function () { openEdit(car.id); });
 
     var right = document.createElement("div");
@@ -423,7 +519,9 @@ function openEdit(id) {
   $("editTitle").textContent = "Edit car";
   $("fName").value = car.name;
   $("fBattery").value = car.battery;
-  $("fEff").value = car.eff;
+  $("fEff").value = round1(toDispEff(car.eff));
+  $("fEffUnit").textContent = isKm() ? "km/kWh" : "mi/kWh";
+  $("fEff").placeholder = isKm() ? "6.1" : "3.8";
   $("fMax").value = car.maxkw || "";
   $("deleteCar").hidden = cars.length <= 1;
   $("formErr").hidden = true;
@@ -439,6 +537,8 @@ function openAdd() {
   $("fName").value = "";
   $("fBattery").value = "";
   $("fEff").value = "";
+  $("fEffUnit").textContent = isKm() ? "km/kWh" : "mi/kWh";
+  $("fEff").placeholder = isKm() ? "6.1" : "3.8";
   $("fMax").value = "";
   $("deleteCar").hidden = true;
   $("formErr").hidden = true;
@@ -464,13 +564,14 @@ $("editCard").addEventListener("submit", function (e) {
   e.preventDefault();
   var name = $("fName").value.trim();
   var battery = parseFloat($("fBattery").value);
-  var eff = parseFloat($("fEff").value);
+  var effInput = parseFloat($("fEff").value);
   var maxRaw = $("fMax").value.trim();
   var maxkw = maxRaw === "" ? 0 : parseFloat(maxRaw);
 
   if (!name) return showErr("Give the car a name.");
   if (!(battery > 0)) return showErr("Enter the battery size in kWh.");
-  if (!(eff > 0)) return showErr("Enter the efficiency in mi/kWh.");
+  if (!(effInput > 0)) return showErr("Enter the efficiency in " + (isKm() ? "km/kWh" : "mi/kWh") + ".");
+  var eff = fromDispEff(effInput);
   if (maxRaw !== "" && !(maxkw > 0)) return showErr("Max charge rate must be a positive number, or leave it blank.");
 
   var curve = (draftCurve && draftCurve.length === CURVE_SOC.length) ? draftCurve.slice() : DEFAULT_CURVE.slice();
@@ -529,7 +630,7 @@ function renderChargerChips() {
       });
     }
   }
-  var cnt = $("chargerCount");
+  var cnt = $("mChargerCount");
   if (cnt) cnt.textContent = String(chargers.length);
 }
 
@@ -558,7 +659,7 @@ function renderChargerList() {
     meta.style.cssText = "background:none;border:none;padding:0;text-align:left;cursor:pointer;color:inherit;font:inherit;min-width:0";
     meta.innerHTML = '<p class="nm"></p><p class="mt"></p>';
     meta.querySelector(".nm").textContent = c.name;
-    meta.querySelector(".mt").textContent = c.kw + " kW · " + c.price + "p/kWh";
+    meta.querySelector(".mt").textContent = c.kw + " kW · " + c.price + cur().minor + "/kWh";
     meta.addEventListener("click", function () { openChgEdit(c.id); });
 
     var right = document.createElement("div");
@@ -585,6 +686,7 @@ function openChgEdit(id) {
   $("cName").value = c.name;
   $("cSpeed").value = c.kw;
   $("cPrice").value = c.price;
+  $("cPriceUnit").textContent = cur().minor + "/kWh";
   $("chgDelete").hidden = false;
   $("chgErr").hidden = true;
   $("chgEditCard").hidden = false;
@@ -595,6 +697,7 @@ function openChgAdd() {
   editingChargerId = null;
   $("chgEditTitle").textContent = "Add a charger";
   $("cName").value = ""; $("cSpeed").value = ""; $("cPrice").value = "";
+  $("cPriceUnit").textContent = cur().minor + "/kWh";
   $("chgDelete").hidden = true;
   $("chgErr").hidden = true;
   $("chgEditCard").hidden = false;
@@ -689,7 +792,7 @@ function renderCompare() {
     return '<div class="cmp-row' + (r.active ? " active" : "") + '">' +
       '<span class="nm">' + escapeHtml(r.name) + '</span>' +
       '<span class="v' + fast + '">' + fmtTime(r.mins) + '</span>' +
-      '<span class="v' + cheap + '">£' + r.cost.toFixed(2) + '</span></div>';
+      '<span class="v' + cheap + '">' + money(r.cost) + '</span></div>';
   }).join("");
   $("cmpPanel").innerHTML = html;
 }
@@ -744,8 +847,14 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.6.0";
+var VERSION = "1.7.0";
 var CHANGELOG = [
+  { v: "1.7.0", date: "2026-09-21", notes: [
+    "New menu (top-right) holds Cars, Chargers, Preferences and About",
+    "Choose miles or kilometres and £/€/$ — auto-detected from your browser, changeable in Preferences",
+    "Set the top of the price slider in Preferences",
+    "Added cost per mile / km to the result"
+  ] },
   { v: "1.6.0", date: "2026-09-21", notes: [
     "Compare my chargers: tap to see time and cost for the current top-up across all your saved chargers, with the fastest and cheapest flagged"
   ] },
@@ -878,20 +987,18 @@ function drawCurveChart() {
 }
 
 /* ---------- about ---------- */
-(function initAbout() {
-  var modal = $("about");
-  function onKey(e) { if (e.key === "Escape") close(); }
-  function open() { drawCurveChart(); modal.hidden = false; document.addEventListener("keydown", onKey); }
-  function close() { modal.hidden = true; document.removeEventListener("keydown", onKey); }
-  $("aboutBtn").addEventListener("click", open);
-  $("aboutClose").addEventListener("click", close);
-  $("aboutBackdrop").addEventListener("click", close);
-})();
+function aboutKey(e) { if (e.key === "Escape") closeAbout(); }
+function openAbout() { drawCurveChart(); $("about").hidden = false; document.addEventListener("keydown", aboutKey); }
+function closeAbout() { $("about").hidden = true; document.removeEventListener("keydown", aboutKey); }
+$("aboutClose").addEventListener("click", closeAbout);
+$("aboutBackdrop").addEventListener("click", closeAbout);
 
 /* ---------- boot ---------- */
 renderHeader();
 renderCarChips();
 renderChargerChips();
+renderPrefs();
+applyPriceMax();
 updateSpeedRange();
 (function () {
   var ac = chargers.find(function (x) { return x.id === activeChargerId; });
