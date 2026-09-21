@@ -166,6 +166,8 @@ function calc() {
   $("rAdded").textContent = "+" + (milesFor(car, tgt) - milesFor(car, now)) + " miles added";
   $("rKwh").textContent = kwh.toFixed(1) + " kWh";
   $("rCost").textContent = "£" + cost.toFixed(2);
+
+  renderCompare();
 }
 
 ["now", "tgt", "price", "speed"].forEach(function (id) {
@@ -631,6 +633,7 @@ $("chgEditCard").addEventListener("submit", function (e) {
     }
   }
   renderChargerChips();
+  renderCompare();
   renderChargerList();
 });
 
@@ -642,14 +645,60 @@ $("chgDelete").addEventListener("click", function () {
   editingChargerId = null;
   $("chgEditCard").hidden = true;
   renderChargerChips();
+  renderCompare();
   renderChargerList();
 });
 
 /* dragging speed/price by hand deselects the current chip (now "custom") */
 ["speed", "price"].forEach(function (id) {
   $(id).addEventListener("input", function () {
-    if (activeChargerId !== null) { activeChargerId = null; save(ACTIVE_CHARGER_KEY, null); renderChargerChips(); }
+    if (activeChargerId !== null) { activeChargerId = null; save(ACTIVE_CHARGER_KEY, null); renderChargerChips(); renderCompare(); }
   });
+});
+
+/* ---------- compare my chargers ---------- */
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, function (ch) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
+  });
+}
+
+/* A read-only table of every saved charger's time + cost for the CURRENT
+   battery move. Hidden unless there are 2+ chargers. Fastest time and cheapest
+   cost are highlighted; the charger in use is tinted. */
+function renderCompare() {
+  var wrap = $("cmpWrap");
+  if (!wrap) return;
+  if (chargers.length < 2) { wrap.hidden = true; return; }
+  wrap.hidden = false;
+
+  var now = +$("now").value, tgt = +$("tgt").value;
+  var car = activeCar();
+  var kwh = car.battery * Math.max(0, tgt - now) / 100;
+
+  var rows = chargers.map(function (c) {
+    return { name: c.name, mins: chargeMinutes(car, now, tgt, c.kw), cost: kwh * c.price / 100, active: c.id === activeChargerId };
+  });
+  var minTime = Math.min.apply(null, rows.map(function (r) { return r.mins; }));
+  var minCost = Math.min.apply(null, rows.map(function (r) { return r.cost; }));
+
+  var html = '<div class="cmp-head"><span>for ' + now + '% → ' + tgt + '%</span><span class="r">time</span><span class="r">cost</span></div>';
+  html += rows.map(function (r) {
+    var fast = (r.mins > 0 && Math.abs(r.mins - minTime) < 0.5) ? " fast" : "";
+    var cheap = (kwh > 0 && Math.abs(r.cost - minCost) < 0.005) ? " cheap" : "";
+    return '<div class="cmp-row' + (r.active ? " active" : "") + '">' +
+      '<span class="nm">' + escapeHtml(r.name) + '</span>' +
+      '<span class="v' + fast + '">' + fmtTime(r.mins) + '</span>' +
+      '<span class="v' + cheap + '">£' + r.cost.toFixed(2) + '</span></div>';
+  }).join("");
+  $("cmpPanel").innerHTML = html;
+}
+
+$("cmpToggle").addEventListener("click", function () {
+  var p = $("cmpPanel");
+  p.hidden = !p.hidden;
+  this.setAttribute("aria-expanded", String(!p.hidden));
+  $("cmpChev").textContent = p.hidden ? "▾" : "▴";
 });
 
 /* ---------- PWA: install button ---------- */
@@ -695,8 +744,11 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.5.3";
+var VERSION = "1.6.0";
 var CHANGELOG = [
+  { v: "1.6.0", date: "2026-09-21", notes: [
+    "Compare my chargers: tap to see time and cost for the current top-up across all your saved chargers, with the fastest and cheapest flagged"
+  ] },
   { v: "1.5.3", date: "2026-09-21", notes: [
     "Fixed the selected chip's glow being clipped at the edge of the scrolling row"
   ] },
