@@ -185,6 +185,13 @@ input[type=range]:focus-visible{box-shadow:0 0 0 3px rgba(46,197,255,.35)}
 .carrow .mt{font-size:11px;color:var(--ink-faint);margin:2px 0 0;font-family:var(--font-mono)}
 .carrow .tick{color:var(--c4);font-family:var(--font-mono);font-size:11px;flex:none}
 .carrow .editlink{color:var(--ink-faint);font-family:var(--font-mono);font-size:11px;flex:none;padding:4px 8px;border-radius:8px;border:1px solid var(--line-2)}
+.grip{display:flex;align-items:center;justify-content:center;width:30px;height:36px;flex:none;color:var(--ink-faint);cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none}
+.grip:active{cursor:grabbing;color:var(--ink)}
+.grip svg{width:18px;height:18px;pointer-events:none}
+.carrow{transition:opacity .12s ease}
+.carrow.dragging{position:relative;z-index:10;border-color:var(--c5);background:var(--panel-2);box-shadow:0 20px 44px -10px rgba(0,0,0,.85),0 0 0 1px var(--c5),0 0 26px -6px var(--c5)}
+.reordering .carrow:not(.dragging){opacity:.4}
+.reordering .grip{cursor:grabbing}
 
 .add{margin-top:4px}
 

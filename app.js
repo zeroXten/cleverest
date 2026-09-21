@@ -420,15 +420,83 @@ $("importNo").addEventListener("click", function () {
   $("importFile").value = "";
 });
 
+/* ---------- reordering (shared) ---------- */
+function gripHandle() {
+  var g = document.createElement("div");
+  g.className = "grip";
+  g.setAttribute("aria-label", "Drag to reorder");
+  g.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>';
+  return g;
+}
+
+/* Drag-to-reorder for a list of .carrow rows (each carries data-id). Delegated,
+   so it survives re-renders. Works with touch and mouse via pointer events. */
+function wireDragReorder(listEl, getArr, onReorder) {
+  var dragEl = null, baseY = 0;
+  var LIFT = " scale(1.03)";
+
+  listEl.addEventListener("pointerdown", function (e) {
+    var grip = e.target.closest(".grip");
+    if (!grip || !listEl.contains(grip)) return;
+    dragEl = grip.closest(".carrow");
+    if (!dragEl) return;
+    baseY = e.clientY;
+    try { grip.setPointerCapture(e.pointerId); } catch (_) {}
+    dragEl.classList.add("dragging");
+    listEl.classList.add("reordering");
+    dragEl.style.transform = LIFT.trim();
+    e.preventDefault();
+  });
+
+  listEl.addEventListener("pointermove", function (e) {
+    if (!dragEl) return;
+    e.preventDefault();
+    var y = e.clientY;
+    var rows = Array.prototype.slice.call(listEl.querySelectorAll(".carrow"));
+    var target = null;
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      if (r === dragEl) continue;
+      var rect = r.getBoundingClientRect();
+      if (y < rect.top + rect.height / 2) { target = r; break; }
+    }
+    var reordered = false;
+    if (target) {
+      if (dragEl.nextElementSibling !== target) { listEl.insertBefore(dragEl, target); reordered = true; }
+    } else if (listEl.lastElementChild !== dragEl) {
+      listEl.appendChild(dragEl); reordered = true;
+    }
+    if (reordered) { baseY = y; dragEl.style.transform = LIFT.trim(); }
+    else { dragEl.style.transform = "translateY(" + (y - baseY) + "px)" + LIFT; }
+  });
+
+  function end() {
+    if (!dragEl) return;
+    dragEl.style.transform = "";
+    dragEl.classList.remove("dragging");
+    listEl.classList.remove("reordering");
+    dragEl = null;
+    var ids = Array.prototype.slice.call(listEl.querySelectorAll(".carrow")).map(function (r) { return r.getAttribute("data-id"); });
+    getArr().sort(function (a, b) { return ids.indexOf(a.id) - ids.indexOf(b.id); });
+    onReorder();
+  }
+  listEl.addEventListener("pointerup", end);
+  listEl.addEventListener("pointercancel", end);
+}
+
+function carsChanged() { save(CARS_KEY, cars); renderCarChips(); renderCarList(); }
+function chargersChanged() { save(CHARGERS_KEY, chargers); renderChargerChips(); renderCompare(); renderChargerList(); }
+
 /* ---------- cars manager ---------- */
 var editingId = null; // null = adding new
 
 function renderCarList() {
   var list = $("carList");
   list.innerHTML = "";
-  cars.forEach(function (car) {
+  cars.forEach(function (car, i) {
     var row = document.createElement("div");
     row.className = "carrow" + (car.id === activeId ? " active" : "");
+    row.setAttribute("data-id", car.id);
 
     var ic = document.createElement("div");
     ic.className = "ic";
@@ -445,6 +513,7 @@ function renderCarList() {
 
     var right = document.createElement("div");
     right.style.cssText = "flex:none;display:flex;align-items:center;gap:8px";
+    if (cars.length > 1) right.appendChild(gripHandle());
     if (car.id === activeId) {
       var tick = document.createElement("span");
       tick.className = "tick";
@@ -714,9 +783,10 @@ function applyCharger(c) {
 function renderChargerList() {
   var list = $("chargerList");
   list.innerHTML = "";
-  chargers.forEach(function (c) {
+  chargers.forEach(function (c, i) {
     var row = document.createElement("div");
     row.className = "carrow" + (c.id === activeChargerId ? " active" : "");
+    row.setAttribute("data-id", c.id);
 
     var ic = document.createElement("div");
     ic.className = "ic";
@@ -732,6 +802,7 @@ function renderChargerList() {
 
     var right = document.createElement("div");
     right.style.cssText = "flex:none;display:flex;align-items:center;gap:8px";
+    if (chargers.length > 1) right.appendChild(gripHandle());
     if (c.id === activeChargerId) {
       var tk = document.createElement("span");
       tk.className = "tick"; tk.textContent = "✓ in use";
@@ -827,6 +898,9 @@ $("chgDelete").addEventListener("click", function () {
   });
 });
 
+wireDragReorder($("carList"), function () { return cars; }, carsChanged);
+wireDragReorder($("chargerList"), function () { return chargers; }, chargersChanged);
+
 /* ---------- compare my chargers ---------- */
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, function (ch) {
@@ -915,8 +989,11 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.8.0";
+var VERSION = "1.9.0";
 var CHANGELOG = [
+  { v: "1.9.0", date: "2026-09-22", notes: [
+    "Drag your cars and chargers into any order with the grip handle — the main-screen chips follow the same order"
+  ] },
   { v: "1.8.0", date: "2026-09-21", notes: [
     "Back up and restore your data — export your cars, chargers and preferences to a file, and import it back"
   ] },
