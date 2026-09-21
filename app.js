@@ -352,6 +352,74 @@ $("fPriceMax").addEventListener("input", function () {
   if (v >= 1) { prefs.priceMax = v; save(PREFS_KEY, prefs); applyPriceMax(); calc(); }
 });
 
+/* ---------- backup: export / import JSON ---------- */
+function exportData() {
+  var data = {
+    app: "cleverest", version: VERSION, exported: new Date().toISOString(),
+    cars: load(CARS_KEY, []), activeCar: load(ACTIVE_KEY, null),
+    chargers: load(CHARGERS_KEY, []), activeCharger: load(ACTIVE_CHARGER_KEY, null),
+    prefs: load(PREFS_KEY, null)
+  };
+  var blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url;
+  a.download = "cleverest-backup-" + new Date().toISOString().slice(0, 10) + ".json";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+}
+
+function applyImport(data) {
+  if (!data || !Array.isArray(data.cars) || !data.cars.length) return false;
+  save(CARS_KEY, data.cars);
+  if (data.activeCar) save(ACTIVE_KEY, data.activeCar);
+  if (Array.isArray(data.chargers)) save(CHARGERS_KEY, data.chargers);
+  if ("activeCharger" in data) save(ACTIVE_CHARGER_KEY, data.activeCharger);
+  if (data.prefs) save(PREFS_KEY, data.prefs);
+  return true;
+}
+
+var pendingImport = null;
+
+$("exportBtn").addEventListener("click", exportData);
+$("importBtn").addEventListener("click", function () {
+  pendingImport = null;
+  $("importErr").hidden = true;
+  $("importConfirm").hidden = true;
+  $("importFile").value = "";
+  $("importFile").click();
+});
+$("importFile").addEventListener("change", function () {
+  var file = this.files && this.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function () {
+    var data = null;
+    try { data = JSON.parse(reader.result); } catch (e) {}
+    if (!data || !Array.isArray(data.cars) || !data.cars.length) {
+      pendingImport = null;
+      $("importConfirm").hidden = true;
+      $("importErr").textContent = "That doesn't look like a CLEVEREST backup file.";
+      $("importErr").hidden = false;
+      return;
+    }
+    pendingImport = data;
+    $("importErr").hidden = true;
+    $("importConfirmMsg").textContent = "Replace your data with “" + file.name + "”? This can't be undone.";
+    $("importConfirm").hidden = false;
+    $("importConfirm").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  };
+  reader.readAsText(file);
+});
+$("importYes").addEventListener("click", function () {
+  if (pendingImport && applyImport(pendingImport)) location.reload();
+});
+$("importNo").addEventListener("click", function () {
+  pendingImport = null;
+  $("importConfirm").hidden = true;
+  $("importFile").value = "";
+});
+
 /* ---------- cars manager ---------- */
 var editingId = null; // null = adding new
 
@@ -847,8 +915,11 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.7.0";
+var VERSION = "1.8.0";
 var CHANGELOG = [
+  { v: "1.8.0", date: "2026-09-21", notes: [
+    "Back up and restore your data — export your cars, chargers and preferences to a file, and import it back"
+  ] },
   { v: "1.7.0", date: "2026-09-21", notes: [
     "New menu (top-right) holds Cars, Chargers, Preferences and About",
     "Choose miles or kilometres and £/€/$ — auto-detected from your browser, changeable in Preferences",

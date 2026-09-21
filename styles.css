@@ -88,6 +88,8 @@ body{
 .seg{display:flex;gap:8px}
 .seg button{flex:1;padding:12px 8px;border-radius:11px;border:1px solid var(--line-2);background:var(--panel);color:var(--ink-dim);font-family:var(--font-mono);font-size:13px;cursor:pointer}
 .seg button.on{border-color:var(--c5);color:#fff;background:linear-gradient(180deg,rgba(46,197,255,.18),rgba(138,92,255,.12))}
+.backup-row{display:flex;gap:10px}
+.backup-row .btn{margin-top:0;flex:1}
 
 /* charger section */
 .section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:22px 0 12px}

@@ -239,10 +239,28 @@
       </div>
 
       <p class="help">Distance and currency are auto-detected from your browser — change anything here any time. Your choices are saved on this device.</p>
+
+      <div class="field">
+        <div class="flabel"><span class="name">Backup</span></div>
+        <div class="backup-row">
+          <button type="button" class="btn ghost" id="exportBtn">Export data</button>
+          <button type="button" class="btn ghost" id="importBtn">Import data</button>
+        </div>
+        <input type="file" id="importFile" hidden>
+        <p class="form-err" id="importErr" hidden></p>
+        <div id="importConfirm" hidden style="margin-top:10px">
+          <p class="help" id="importConfirmMsg" style="margin-top:0"></p>
+          <div class="backup-row">
+            <button type="button" class="btn" id="importYes">Replace data</button>
+            <button type="button" class="btn ghost" id="importNo">Cancel</button>
+          </div>
+        </div>
+        <p class="help">Export saves your cars, chargers and preferences to a file you can keep. Import replaces them from a file.</p>
+      </div>
     </main>
 
     <footer class="foot">
-      <button class="ver" id="verBtn" aria-haspopup="dialog">Version 1.7.0</button>
+      <button class="ver" id="verBtn" aria-haspopup="dialog">Version 1.8.0</button>
       <span aria-hidden="true"> · </span>
       Made by <a href="https://www.linkedin.com/in/zeroxten/" target="_blank" rel="noopener noreferrer">zeroXten</a>
     </footer>
