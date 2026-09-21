@@ -51,8 +51,8 @@ function milesFor(car, pct) { return Math.round(car.battery * pct / 100 * car.ef
    the shape (near peak through the low-mid range, tapering hard near full) is
    broadly shared — enough to make time estimates far better than a flat rate.
    Scaled by each car's max charge rate, and always capped by the charger. */
-var CURVE_SOC = [10, 35, 60, 80, 100];               // state-of-charge anchor points (%)
-var DEFAULT_CURVE = [1.00, 0.85, 0.60, 0.37, 0.07];  // fraction of peak at each anchor (typical shape)
+var CURVE_SOC = [0, 20, 40, 60, 80, 100];                  // evenly spaced state-of-charge anchors (%)
+var DEFAULT_CURVE = [0.60, 1.00, 0.82, 0.60, 0.37, 0.07];  // fraction of peak at each anchor (typical shape)
 
 function curveFactor(curve, soc) {
   curve = (curve && curve.length === CURVE_SOC.length) ? curve : DEFAULT_CURVE;
@@ -65,6 +65,30 @@ function curveFactor(curve, soc) {
   }
   return curve[curve.length - 1];
 }
+
+/* Migrate curves saved under the old 5-point layout ([10,35,60,80,100]) to the
+   current anchors, by resampling — so nobody loses a custom curve. */
+(function migrateCurves() {
+  var OLD_SOC = [10, 35, 60, 80, 100];
+  if (OLD_SOC.length === CURVE_SOC.length) return;
+  function resample(old) {
+    return CURVE_SOC.map(function (soc) {
+      if (soc <= OLD_SOC[0]) return +old[0].toFixed(3);
+      for (var i = 1; i < OLD_SOC.length; i++) {
+        if (soc <= OLD_SOC[i]) {
+          var t = (soc - OLD_SOC[i - 1]) / (OLD_SOC[i] - OLD_SOC[i - 1]);
+          return +(old[i - 1] + (old[i] - old[i - 1]) * t).toFixed(3);
+        }
+      }
+      return +old[old.length - 1].toFixed(3);
+    });
+  }
+  var changed = false;
+  cars.forEach(function (c) {
+    if (c.curve && c.curve.length === OLD_SOC.length) { c.curve = resample(c.curve); changed = true; }
+  });
+  if (changed) save(CARS_KEY, cars);
+})();
 
 /* Minutes to charge from -> to (%) on a charger of chargerKw, integrating the
    curve in 1% steps: dt = dEnergy / power(soc). Power is the lower of the
@@ -280,6 +304,7 @@ function renderCurveEditor() {
       '<defs><linearGradient id="ceg" x1="0" x2="1">' + CE_GRAD + '</linearGradient></defs>' +
       grid + ylab + xlab +
       '<text class="ce-unit" x="' + (CE.x0 - 6) + '" y="' + (CE.y1 - 7) + '"></text>' +
+      '<text class="ce-readout" x="' + ((CE.x0 + CE.x1) / 2) + '" y="14"></text>' +
       '<polyline class="ce-line" fill="none" stroke="url(#ceg)" stroke-width="2.5" stroke-linejoin="round"/>' +
       hits + handles + vals +
       '<text class="cc-axis" x="' + ((CE.x0 + CE.x1) / 2) + '" y="174">state of charge (%)</text>' +
@@ -293,7 +318,7 @@ function updateCurveGraphics(activeIdx) {
   if (!svg || !draftCurve) return;
   var peak = cePeak();
 
-  var pts = [ceX(0) + "," + ceY(draftCurve[0])];
+  var pts = [];
   for (var i = 0; i < CURVE_SOC.length; i++) pts.push(ceX(CURVE_SOC[i]) + "," + ceY(draftCurve[i]));
   svg.querySelector(".ce-line").setAttribute("points", pts.join(" "));
 
@@ -314,6 +339,15 @@ function updateCurveGraphics(activeIdx) {
   });
   var unitEl = svg.querySelector(".ce-unit");
   if (unitEl) unitEl.textContent = peak > 0 ? "kW" : "%";
+
+  var ro = svg.querySelector(".ce-readout");
+  if (ro) {
+    if (activeIdx != null) {
+      var vf = draftCurve[activeIdx];
+      ro.textContent = (peak > 0 ? Math.round(peak * vf) + " kW" : Math.round(vf * 100) + "%") +
+        " @ " + CURVE_SOC[activeIdx] + "%";
+    } else ro.textContent = "";
+  }
 }
 
 function wireCurveDrag() {
@@ -478,8 +512,12 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.4.2";
+var VERSION = "1.4.3";
 var CHANGELOG = [
+  { v: "1.4.3", date: "2026-09-21", notes: [
+    "Curve editor points are now evenly spaced (0–100%)",
+    "A live readout shows the value while you drag, so your finger no longer hides it"
+  ] },
   { v: "1.4.2", date: "2026-09-20", notes: [
     "Curve editor now shows power in kW — a labelled axis plus the value above each point — so you're not guessing"
   ] },
