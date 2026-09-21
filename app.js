@@ -695,8 +695,11 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.5.1";
+var VERSION = "1.5.2";
 var CHANGELOG = [
+  { v: "1.5.2", date: "2026-09-21", notes: [
+    "Car and charger chips scroll sideways instead of wrapping onto multiple rows"
+  ] },
   { v: "1.5.1", date: "2026-09-21", notes: [
     "Pick your car and charger from quick chips on the main screen",
     "Manage them from the Cars and Chargers buttons up top; adjust a slider to go back to a custom charger"
