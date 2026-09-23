@@ -304,6 +304,28 @@ function estimateMinutes(car, from, to, charger, temp) {
   return dcEstimateMinutes(car, from, to, charger.kw, temp);
 }
 
+/* Backfill per-band predicted-time fractions on older DC sessions (logged before
+   this data existed, or under a different band layout) so they feed the per-band
+   chart, not just the overall factor. Recomputes from the session's stored range
+   using its car and the charger power it recorded (or the charger's current kW). */
+(function migrateSessionBands() {
+  var B = bandCount(), changed = false;
+  sessions.forEach(function (s) {
+    if (s.type !== "DC") return;
+    if (Array.isArray(s.bands) && s.bands.length === B) return;
+    var car = cars.find(function (c) { return c.id === s.carId; });
+    var kw = (s.chargerKw > 0) ? s.chargerKw : (function () {
+      var c = chargers.find(function (x) { return x.id === s.chargerId; });
+      return c ? c.kw : 0;
+    })();
+    if (car && kw > 0 && s.fromPct != null && s.toPct != null && s.toPct > s.fromPct) {
+      var bands = bandFractions(car, s.fromPct, s.toPct, kw);
+      if (bands) { s.bands = bands; if (!(s.chargerKw > 0)) s.chargerKw = kw; changed = true; }
+    }
+  });
+  if (changed) save(SESSIONS_KEY, sessions);
+})();
+
 /* ---------- calibration from logged sessions ---------- */
 /* Recency weight for a session: halves every HALF_LIFE_DAYS. */
 function sessionWeight(iso) {
@@ -1338,10 +1360,18 @@ function renderCalSummary() {
   html += calCell("DC (rapid)", countSessions(car.id, "DC"), timeCorrection(car.id, "DC"));
   html += calCell("AC", countSessions(car.id, "AC"), timeCorrection(car.id, "AC"));
   html += '</div>';
+  var dcN = countSessions(car.id, "DC");
   var bm = dcBandMultipliers(car.id);
+  html += '<p class="cal-h">DC time by charge level</p>';
   if (bm.bands) {
-    html += '<p class="cal-h">DC time by charge level</p>' + bandVizSVG(bm.bands) +
-      '<p class="cal-note">Each bar is one 10% step. Above the line = slower than the base estimate at that charge level, below = faster. Levels you’ve rarely charged through sit at the overall figure.</p>';
+    html += bandVizSVG(bm.bands) +
+      '<p class="cal-note">Each bar is one 10% step. Above the line = slower than the base estimate at that charge level, below = faster' +
+      (dcN < 3 ? ' — it stays near flat until a few charges across different levels are logged' : '') +
+      '. Levels you’ve rarely charged through sit at the overall figure.</p>';
+  } else {
+    html += '<p class="cal-note">' + (dcN > 0
+      ? 'Your rapid (DC) charges are counted in the overall figure above; the per-level chart appears once they carry charge-level detail (log a new one on this version).'
+      : 'Log a rapid (DC) charge and this fills in — a bar per 10% step showing how it ran versus the estimate.') + '</p>';
   }
   var tempN = sessions.filter(function (s) { return s.carId === car.id && s.type === "DC" && s.temp != null && !isNaN(s.temp); }).length;
   if (tempN >= 2) html += '<p class="cal-note">DC time also flexes with the ambient temperature you set on the calculator — learning from ' + tempN + ' temperature-tagged session' + (tempN === 1 ? '' : 's') + '.</p>';
@@ -1446,7 +1476,7 @@ $("sessEditCard").addEventListener("submit", function (e) {
     actualMins: mins, actualCost: cost,
     actualKwh: (actualKwh === null || isNaN(actualKwh)) ? null : actualKwh,
     predMins: predMins, predKwh: predKwh, predCost: predCost,
-    bands: bands,
+    chargerKw: sc.chg.kw, bands: bands,
     temp: (temp === null || isNaN(temp)) ? null : temp
   });
   sessions.sort(function (a, b) { return new Date(a.date) - new Date(b.date); });
@@ -1562,8 +1592,11 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.13.0";
+var VERSION = "1.13.1";
 var CHANGELOG = [
+  { v: "1.13.1", date: "2026-09-23", notes: [
+    "The DC charge-level chart now shows a clear placeholder before there's data (it was simply blank), and older logged charges are backfilled so they count toward it"
+  ] },
   { v: "1.13.0", date: "2026-09-23", notes: [
     "Rapid (DC) calibration now uses even 10% charge-level bands (was a few uneven bands) — a more uniform, statistically cleaner split; part-covered bands count in proportion",
     "The Sessions page shows a little chart of how much each 10% step runs slower or faster than the base estimate"
