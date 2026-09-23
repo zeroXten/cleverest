@@ -138,6 +138,7 @@ input:focus,select.sel:focus{outline:none;border-color:var(--c5);box-shadow:0 0 
 .cal-lab{font-size:11px;color:var(--ink-dim);font-family:var(--font-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cal-val{font-family:var(--font-mono);font-weight:600;font-size:20px;color:var(--ink)}
 .cal-sub{font-size:10.5px;color:var(--ink-faint);font-family:var(--font-mono)}
+.cal-note{font-size:11.5px;color:var(--ink-faint);margin:10px 2px 0;line-height:1.5}
 .unit{position:relative}
 .unit .u{position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--ink-faint);font-family:var(--font-mono);font-size:13px;pointer-events:none}
 

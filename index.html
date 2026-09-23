@@ -94,6 +94,12 @@
         <div class="scale"><span>free</span><span id="priceMax">150p</span></div>
       </div>
 
+      <div class="field" id="ambientField" hidden>
+        <div class="flabel"><span class="name">Temp <span class="opt">(optional)</span></span><span class="val" id="vAmbient"></span></div>
+        <div class="unit"><input type="number" id="ambient" step="1" inputmode="numeric" placeholder="e.g. 8"><span class="u">°C</span></div>
+        <p class="help" id="ambientNote">Cold weather slows rapid (DC) charging. Add today's temperature and the app adjusts, once it's learned from your logged sessions.</p>
+      </div>
+
       <section class="result" aria-live="polite">
         <div class="result-top">
           <p class="r-headline" id="rHeadline">READY BY <b>19:32</b></p>
@@ -263,29 +269,34 @@
           <select id="sCharger" class="sel"></select>
           <p class="help" id="sChargerNote"></p>
         </div>
-        <div class="row2">
-          <div class="field">
-            <div class="flabel"><span class="name">From</span></div>
-            <div class="unit"><input type="number" id="sFrom" min="0" max="100" step="1" inputmode="numeric" placeholder="20"><span class="u">%</span></div>
-          </div>
-          <div class="field">
-            <div class="flabel"><span class="name">To</span></div>
-            <div class="unit"><input type="number" id="sTo" min="0" max="100" step="1" inputmode="numeric" placeholder="80"><span class="u">%</span></div>
-          </div>
+        <div class="field">
+          <div class="flabel"><span class="name">From</span><span class="val pink" id="sFromVal">20%</span></div>
+          <input type="range" id="sFrom" min="0" max="100" value="20" step="1" aria-label="Start battery %">
+        </div>
+        <div class="field">
+          <div class="flabel"><span class="name">To</span><span class="val cyan" id="sToVal">80%</span></div>
+          <input type="range" id="sTo" min="0" max="100" value="80" step="1" aria-label="Finish battery %">
+        </div>
+        <div class="field">
+          <div class="flabel"><span class="name">Actual time</span><span class="val violet" id="sMinsVal">35 min</span></div>
+          <input type="range" id="sMins" min="0" max="480" value="35" step="1" aria-label="Actual time (minutes)">
+          <div class="scale"><span>0</span><span>2h</span><span>4h</span><span>8h</span></div>
         </div>
         <div class="row2">
-          <div class="field">
-            <div class="flabel"><span class="name">Actual time</span></div>
-            <div class="unit"><input type="number" id="sMins" min="1" step="1" inputmode="numeric" placeholder="35"><span class="u">min</span></div>
-          </div>
           <div class="field">
             <div class="flabel"><span class="name">Actual cost</span></div>
             <div class="unit"><input type="number" id="sCost" min="0" step="0.01" inputmode="decimal" placeholder="12.50"><span class="u" id="sCostUnit">£</span></div>
           </div>
+          <div class="field">
+            <div class="flabel"><span class="name">Energy <span class="opt">(opt)</span></span></div>
+            <div class="unit"><input type="number" id="sKwh" min="0" step="0.01" inputmode="decimal" placeholder="9.39"><span class="u">kWh</span></div>
+          </div>
         </div>
+        <p class="help" id="sKwhNote">From the charger receipt if shown — lets the app learn the real price per kWh.</p>
         <div class="field">
           <div class="flabel"><span class="name">Temperature <span class="opt">(optional)</span></span></div>
           <div class="unit"><input type="number" id="sTemp" step="1" inputmode="numeric" placeholder="12"><span class="u">°C</span></div>
+          <p class="help">Ambient temperature during the charge. Cold slows DC (rapid) charging — the app learns how much.</p>
         </div>
         <p class="sess-est" id="sessEst"></p>
         <p class="form-err" id="sessErr" hidden></p>

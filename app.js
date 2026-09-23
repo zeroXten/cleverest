@@ -237,16 +237,77 @@ function timeCorrection(carId, type) {
     .map(function (s) { return { ratio: s.actualMins / s.predMins, iso: s.date }; }));
 }
 
-/* Cost correction is per charger/network (tariff changes), independent of car. */
+/* Cost correction is per charger/network (tariff changes), independent of car.
+   When a session logged the actual energy delivered, the ratio is real price-
+   per-kWh vs the price you set — isolating tariff drift from any error in the
+   predicted energy. Otherwise it falls back to the total actual-vs-predicted cost. */
 function costCorrection(chargerId) {
   if (!chargerId) return 1;
   return shrunkCorrection(sessions
     .filter(function (s) { return s.chargerId === chargerId && s.predCost > 0 && s.actualCost > 0; })
-    .map(function (s) { return { ratio: s.actualCost / s.predCost, iso: s.date }; }));
+    .map(function (s) {
+      if (s.actualKwh > 0 && s.predKwh > 0) {
+        var setPerKwh = s.predCost / s.predKwh;        // the price you set (= price/100 at log time)
+        var realPerKwh = s.actualCost / s.actualKwh;   // what you actually paid per kWh
+        return { ratio: realPerKwh / setPerKwh, iso: s.date };
+      }
+      return { ratio: s.actualCost / s.predCost, iso: s.date };
+    }));
 }
 
 function countSessions(carId, type) {
   return sessions.filter(function (s) { return s.carId === carId && s.type === type; }).length;
+}
+
+/* ---------- temperature-aware DC time ---------- */
+var TEMP_SLOPE_K = 4;        // shrinkage: need several temp-tagged sessions to trust a slope
+var TEMP_SLOPE_CAP = 0.06;   // clamp the learned sensitivity to ~6% of time per °C
+
+/* How much colder ambient temperatures stretch this car's DC charge time, learnt
+   from logged DC sessions that recorded a temperature. Returns a multiplier on
+   the plain DC time correction for a given current temperature. Centred on the
+   (recency-weighted) mean logged temp so it's 1 there, and heavily shrunk so it
+   stays ~1 until several temperature-tagged sessions exist. AC is unaffected. */
+function dcTempFactor(carId, temp) {
+  if (temp == null || isNaN(temp)) return 1;
+  var base = timeCorrection(carId, "DC");
+  if (!(base > 0)) return 1;
+  var rows = sessions.filter(function (s) {
+    return s.carId === carId && s.type === "DC" && s.predMins > 0 && s.actualMins > 0 && s.temp != null && !isNaN(s.temp);
+  }).map(function (s) {
+    return { t: +s.temp, y: Math.log((s.actualMins / s.predMins) / base), w: sessionWeight(s.date) };
+  });
+  if (rows.length < 2) return 1;
+  var W = 0, WT = 0;
+  rows.forEach(function (r) { W += r.w; WT += r.w * r.t; });
+  if (!(W > 0)) return 1;
+  var tMean = WT / W;
+  var num = 0, den = 0; // weighted slope of y on x=(tMean - t), through the centred origin
+  rows.forEach(function (r) { var x = tMean - r.t; num += r.w * x * r.y; den += r.w * x * x; });
+  if (!(den > 0)) return 1;
+  var slope = (num / den) * (W / (W + TEMP_SLOPE_K));
+  slope = Math.max(-TEMP_SLOPE_CAP, Math.min(TEMP_SLOPE_CAP, slope));
+  return Math.max(0.6, Math.min(1.8, Math.exp(slope * (tMean - temp))));
+}
+
+/* DC time correction including the current-temperature adjustment, if given. */
+function dcTimeCorrection(carId, temp) {
+  return timeCorrection(carId, "DC") * dcTempFactor(carId, temp);
+}
+
+/* Current ambient temperature from the main-screen field, or null if blank. */
+function currentAmbient() {
+  var el = $("ambient");
+  if (!el) return null;
+  var v = el.value.trim();
+  if (v === "") return null;
+  var n = parseFloat(v);
+  return isNaN(n) ? null : n;
+}
+
+/* The right time correction for a charger type, temperature-aware for DC. */
+function timeCorrectionFor(carId, type, temp) {
+  return type === "DC" ? dcTimeCorrection(carId, temp) : timeCorrection(carId, "AC");
 }
 
 /* Cap the charger-speed slider at the active car's max rate (no point charging
@@ -288,7 +349,12 @@ function calc() {
 
   var charger = currentCharger();
   var kwh = car.battery * (tgt - now) / 100;
-  var tCorr = timeCorrection(car.id, charger.type);
+  var af = $("ambientField");
+  if (af) af.hidden = (charger.type !== "DC");
+  var ambient = currentAmbient();
+  var va = $("vAmbient");
+  if (va) va.textContent = (charger.type === "DC" && ambient != null) ? ambient + "°C" : "";
+  var tCorr = timeCorrectionFor(car.id, charger.type, ambient);
   var cCorr = costCorrection(charger.id);
   var mins = baseMinutes(car, now, tgt, charger) * tCorr;
   var cost = kwh * price / 100 * cCorr;
@@ -331,6 +397,7 @@ function calc() {
 ["now", "tgt", "price", "speed"].forEach(function (id) {
   $(id).addEventListener("input", calc);
 });
+$("ambient").addEventListener("input", calc);
 
 /* ---------- slider "settle" guard ----------
    On touch, lifting your thumb often nudges the value a few units. Once you've
@@ -1075,7 +1142,6 @@ wireDragReorder($("chargerList"), function () { return chargers; }, chargersChan
 
 /* ---------- charging sessions (calibration) ---------- */
 function sessErr(m) { var e = $("sessErr"); e.textContent = m; e.hidden = false; }
-function clampPct(v) { v = parseFloat(v); if (!(v >= 0)) v = 0; if (v > 100) v = 100; return v; }
 function fmtFactor(f) { return "×" + (Math.round(f * 100) / 100).toFixed(2); }
 
 function fillSessionSelectors() {
@@ -1091,10 +1157,25 @@ function fillSessionSelectors() {
   });
 }
 
+function sessTemp() {
+  var v = $("sTemp").value.trim();
+  if (v === "") return null;
+  var n = parseFloat(v);
+  return isNaN(n) ? null : n;
+}
+
 function sessScenario() {
   var car = cars.find(function (c) { return c.id === $("sCar").value; }) || activeCar();
   var chg = chargers.find(function (c) { return c.id === $("sCharger").value; }) || null;
-  return { car: car, chg: chg, from: clampPct($("sFrom").value), to: clampPct($("sTo").value) };
+  return { car: car, chg: chg, from: +$("sFrom").value, to: +$("sTo").value };
+}
+
+/* Keep the slider readouts in step and refresh the live estimate. */
+function updateSessSliders() {
+  $("sFromVal").textContent = (+$("sFrom").value) + "%";
+  $("sToVal").textContent = (+$("sTo").value) + "%";
+  $("sMinsVal").textContent = fmtTime(+$("sMins").value);
+  updateSessEst();
 }
 
 /* Live "here's what the app would predict" line under the log form. */
@@ -1107,7 +1188,7 @@ function updateSessEst() {
   var est = $("sessEst");
   if (!sc.chg || !(sc.to > sc.from)) { est.textContent = ""; return; }
   var chgObj = { id: sc.chg.id, kw: sc.chg.kw, type: sc.chg.type, phase: sc.chg.phase || "single" };
-  var mins = baseMinutes(sc.car, sc.from, sc.to, chgObj) * timeCorrection(sc.car.id, sc.chg.type);
+  var mins = baseMinutes(sc.car, sc.from, sc.to, chgObj) * timeCorrectionFor(sc.car.id, sc.chg.type, sessTemp());
   var kwh = sc.car.battery * (sc.to - sc.from) / 100;
   var cost = kwh * sc.chg.price / 100 * costCorrection(sc.chg.id);
   est.textContent = "App estimate for this: " + fmtTime(mins) + " · " + money(cost);
@@ -1121,10 +1202,11 @@ function openSessionForm() {
   if (ac) $("sCharger").value = ac.id;
   $("sFrom").value = +$("now").value;
   $("sTo").value = +$("tgt").value;
-  $("sMins").value = ""; $("sCost").value = ""; $("sTemp").value = "";
+  $("sMins").value = 35;
+  $("sCost").value = ""; $("sKwh").value = ""; $("sTemp").value = "";
   $("sessErr").hidden = true;
   $("sessEditCard").hidden = false;
-  updateSessEst();
+  updateSessSliders();
   $("sessEditCard").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
@@ -1142,6 +1224,8 @@ function renderCalSummary() {
   html += calCell("DC (rapid)", countSessions(car.id, "DC"), timeCorrection(car.id, "DC"));
   html += calCell("AC", countSessions(car.id, "AC"), timeCorrection(car.id, "AC"));
   html += '</div>';
+  var tempN = sessions.filter(function (s) { return s.carId === car.id && s.type === "DC" && s.temp != null && !isNaN(s.temp); }).length;
+  if (tempN >= 2) html += '<p class="cal-note">DC time also flexes with the ambient temperature you set on the calculator — learning from ' + tempN + ' temperature-tagged session' + (tempN === 1 ? '' : 's') + '.</p>';
   var costRows = chargers.map(function (c) {
     return { name: c.name, n: sessions.filter(function (s) { return s.chargerId === c.id; }).length, f: costCorrection(c.id) };
   }).filter(function (r) { return r.n > 0; });
@@ -1174,9 +1258,14 @@ function renderSessionList() {
     meta.innerHTML = '<p class="nm"></p><p class="mt"></p>';
     var when = new Date(s.date).toLocaleDateString(undefined, { day: "numeric", month: "short" });
     meta.querySelector(".nm").textContent = when + " · " + (car ? car.name : "?") + " · " + (chg ? chg.name : "?") + " · " + s.type;
+    var energyBit = "";
+    if (s.actualKwh > 0) {
+      var perKwh = Math.round(s.actualCost / s.actualKwh * 100);
+      energyBit = " · " + round1(s.actualKwh) + " kWh @ " + perKwh + cur().minor + "/kWh";
+    }
     meta.querySelector(".mt").textContent =
       s.fromPct + "→" + s.toPct + "% · " + fmtTime(s.actualMins) + " (est " + fmtTime(s.predMins) + ") · " +
-      money(s.actualCost) + " (est " + money(s.predCost) + ")" + (s.temp != null ? " · " + s.temp + "°C" : "");
+      money(s.actualCost) + " (est " + money(s.predCost) + ")" + energyBit + (s.temp != null ? " · " + s.temp + "°C" : "");
 
     var right = document.createElement("div");
     right.style.cssText = "flex:none";
@@ -1199,27 +1288,32 @@ function renderSessions() {
 
 $("addSessionBtn").addEventListener("click", openSessionForm);
 $("sessCancel").addEventListener("click", function () { $("sessEditCard").hidden = true; });
-["sCar", "sCharger", "sFrom", "sTo"].forEach(function (id) {
-  $(id).addEventListener("input", updateSessEst);
+["sFrom", "sTo", "sMins"].forEach(function (id) {
+  $(id).addEventListener("input", updateSessSliders);
+});
+["sCar", "sCharger"].forEach(function (id) {
   $(id).addEventListener("change", updateSessEst);
 });
+$("sTemp").addEventListener("input", updateSessEst);
 
 $("sessEditCard").addEventListener("submit", function (e) {
   e.preventDefault();
   var sc = sessScenario();
   if (!sc.chg) return sessErr("Pick a charger.");
   if (!(sc.to > sc.from)) return sessErr("The finish % must be above the start %.");
-  var mins = parseFloat($("sMins").value);
+  var mins = +$("sMins").value;
   var cost = parseFloat($("sCost").value);
-  if (!(mins > 0)) return sessErr("Enter the actual time in minutes.");
+  if (!(mins > 0)) return sessErr("Set the actual time.");
   if (!(cost >= 0)) return sessErr("Enter the actual cost.");
-  var tempRaw = $("sTemp").value.trim();
-  var temp = tempRaw === "" ? null : parseFloat(tempRaw);
+  var kwhRaw = $("sKwh").value.trim();
+  var actualKwh = kwhRaw === "" ? null : parseFloat(kwhRaw);
+  if (actualKwh !== null && !(actualKwh > 0)) return sessErr("Energy must be a positive number, or leave it blank.");
+  var temp = sessTemp();
 
   var chgObj = { id: sc.chg.id, kw: sc.chg.kw, type: sc.chg.type, phase: sc.chg.phase || "single" };
   var predMins = baseMinutes(sc.car, sc.from, sc.to, chgObj);
-  var kwh = sc.car.battery * (sc.to - sc.from) / 100;
-  var predCost = kwh * sc.chg.price / 100;
+  var predKwh = sc.car.battery * (sc.to - sc.from) / 100;
+  var predCost = predKwh * sc.chg.price / 100;
 
   sessions.push({
     id: "sess-" + Date.now().toString(36),
@@ -1228,7 +1322,8 @@ $("sessEditCard").addEventListener("submit", function (e) {
     type: sc.chg.type, phase: sc.chg.phase || "single",
     fromPct: sc.from, toPct: sc.to,
     actualMins: mins, actualCost: cost,
-    predMins: predMins, predCost: predCost,
+    actualKwh: (actualKwh === null || isNaN(actualKwh)) ? null : actualKwh,
+    predMins: predMins, predKwh: predKwh, predCost: predCost,
     temp: (temp === null || isNaN(temp)) ? null : temp
   });
   sessions.sort(function (a, b) { return new Date(a.date) - new Date(b.date); });
@@ -1269,11 +1364,12 @@ function renderCompare() {
   var car = activeCar();
   var kwh = car.battery * Math.max(0, tgt - now) / 100;
 
+  var ambient = currentAmbient();
   var rows = chargers.map(function (c) {
     var chg = { id: c.id, kw: c.kw, type: c.type, phase: c.phase || "single" };
     return {
       name: c.name,
-      mins: baseMinutes(car, now, tgt, chg) * timeCorrection(car.id, c.type),
+      mins: baseMinutes(car, now, tgt, chg) * timeCorrectionFor(car.id, c.type, ambient),
       cost: kwh * c.price / 100 * costCorrection(c.id),
       active: c.id === activeChargerId
     };
@@ -1343,8 +1439,13 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.10.0";
+var VERSION = "1.11.0";
 var CHANGELOG = [
+  { v: "1.11.0", date: "2026-09-23", notes: [
+    "Log a session with sliders for start %, finish % and actual time",
+    "Record the energy delivered (kWh) from your charge receipt — the app learns your real price per kWh, so cost calibration tracks the tariff rather than guessing at energy",
+    "Cold weather now factors into rapid (DC) estimates: log the temperature with a few sessions, then set today's temperature on the calculator and the app adjusts"
+  ] },
   { v: "1.10.0", date: "2026-09-23", notes: [
     "Chargers now know if they're AC or DC (and single- or three-phase for AC) — set automatically from the power, override anytime",
     "Cars have separate AC charging limits (single- and three-phase) alongside the DC rapid rate, so AC estimates aren't overstated",
