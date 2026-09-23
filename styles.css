@@ -143,6 +143,7 @@ input:focus,select.sel:focus{outline:none;border-color:var(--c5);box-shadow:0 0 
 .bviz-base{stroke:var(--ink-faint);stroke-width:1;stroke-dasharray:3 3;opacity:.7}
 .bviz-hi{fill:var(--c1)}
 .bviz-lo{fill:var(--c5)}
+.bviz-empty{fill:var(--ink-faint);opacity:.45}
 .bviz-x{fill:var(--ink-faint);font-family:var(--font-mono);font-size:9px;text-anchor:middle}
 .unit{position:relative}
 .unit .u{position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--ink-faint);font-family:var(--font-mono);font-size:13px;pointer-events:none}

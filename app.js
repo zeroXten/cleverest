@@ -272,12 +272,13 @@ function dcBandMultipliers(carId) {
   }).map(function (s) {
     return { f: s.bands, r: s.actualMins / s.predMins, w: sessionWeight(s.date) };
   });
-  if (!rows.length) return { bands: null, g: g };
+  if (!rows.length) return { bands: null, g: g, cov: null };
 
-  var F = [], c = [], a, b;
-  for (a = 0; a < B; a++) { F.push(new Array(B).fill(0)); c.push(0); }
+  var F = [], c = [], cov = [], a, b;
+  for (a = 0; a < B; a++) { F.push(new Array(B).fill(0)); c.push(0); cov.push(0); }
   rows.forEach(function (row) {
     for (a = 0; a < B; a++) {
+      cov[a] += row.w * row.f[a];               // effective weighted coverage of this band
       c[a] += row.w * row.f[a] * row.r;
       for (b = 0; b < B; b++) F[a][b] += row.w * row.f[a] * row.f[b];
     }
@@ -285,10 +286,13 @@ function dcBandMultipliers(carId) {
   for (a = 0; a < B; a++) { F[a][a] += BAND_LAMBDA; c[a] += BAND_LAMBDA * g; }
 
   var m = solveLinear(F, c);
-  if (!m) return { bands: null, g: g };
+  if (!m) return { bands: null, g: g, cov: null };
   m = m.map(function (x) { return Math.max(0.5, Math.min(2, x)); });
-  return { bands: m, g: g };
+  return { bands: m, g: g, cov: cov };
 }
+
+// A band counts as "charged through" (worth drawing) above this effective coverage.
+var BAND_COV_MIN = 0.08;
 
 /* Final corrected DC minutes: reshape the curve with the band multipliers (or
    the flat factor when unfitted), then apply the current-temperature factor. */
@@ -1331,17 +1335,25 @@ function calCell(label, n, f) {
     '<span class="cal-val">' + val + '</span><span class="cal-sub">' + sub + '</span></div>';
 }
 
-/* Compact bar chart of the per-band DC time multipliers, baseline at ×1.00. */
-function bandVizSVG(bands) {
+/* Compact bar chart of the per-band DC time multipliers, baseline at ×1.00.
+   Only bands you've actually charged through (coverage in `cov`) get a bar; the
+   rest — where the value would just be the overall fallback — show a faint dot. */
+function bandVizSVG(bands, cov) {
   var B = bands.length, W = 320, H = 104, pl = 8, pr = 8, pt = 10, pb = 20;
   var x0 = pl, x1 = W - pr, y0 = H - pb, y1 = pt;
+  var covered = bands.map(function (m, i) { return cov && cov[i] >= BAND_COV_MIN; });
   var maxDev = 0.12;
-  bands.forEach(function (m) { maxDev = Math.max(maxDev, Math.abs(m - 1)); });
+  bands.forEach(function (m, i) { if (covered[i]) maxDev = Math.max(maxDev, Math.abs(m - 1)); });
   var lo = 1 - maxDev * 1.15, hi = 1 + maxDev * 1.15;
   function Y(m) { return y0 - ((m - lo) / (hi - lo)) * (y0 - y1); }
   var base = Y(1), bw = (x1 - x0) / B, out = "";
   out += '<line class="bviz-base" x1="' + x0 + '" y1="' + base.toFixed(1) + '" x2="' + x1 + '" y2="' + base.toFixed(1) + '"/>';
   for (var i = 0; i < B; i++) {
+    var cx = x0 + i * bw + bw * 0.5;
+    if (!covered[i]) {                        // untouched level: faint marker, no bar
+      out += '<circle class="bviz-empty" cx="' + cx.toFixed(1) + '" cy="' + base.toFixed(1) + '" r="1.6"/>';
+      continue;
+    }
     var m = bands[i], bx = x0 + i * bw + bw * 0.16, wi = bw * 0.68;
     var by = Y(m), top = Math.min(by, base), h = Math.max(1, Math.abs(by - base));
     out += '<rect class="' + (m >= 1 ? "bviz-hi" : "bviz-lo") + '" x="' + bx.toFixed(1) + '" y="' + top.toFixed(1) +
@@ -1351,7 +1363,7 @@ function bandVizSVG(bands) {
     var lx = x0 + (p / 100) * (x1 - x0);
     out += '<text class="bviz-x" x="' + lx.toFixed(1) + '" y="' + (H - 5) + '">' + p + '%</text>';
   });
-  return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="bviz" role="img" aria-label="DC charge time correction by state of charge, relative to the base estimate. The dashed line is the base estimate; bars above it are slower, below are faster.">' + out + '</svg>';
+  return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="bviz" role="img" aria-label="DC charge time correction by state of charge, relative to the base estimate. Only charge levels you have logged show a bar; the dashed line is the base estimate; bars above it are slower, below are faster.">' + out + '</svg>';
 }
 
 function renderCalSummary() {
@@ -1365,10 +1377,10 @@ function renderCalSummary() {
   var bm = dcBandMultipliers(car.id);
   html += '<p class="cal-h">DC time by charge level</p>';
   if (bm.bands) {
-    html += bandVizSVG(bm.bands) +
-      '<p class="cal-note">Each bar is one 10% step. Above the line = slower than the base estimate at that charge level, below = faster' +
-      (dcN < 3 ? ' — it stays near flat until a few charges across different levels are logged' : '') +
-      '. Levels you’ve rarely charged through sit at the overall figure.</p>';
+    html += bandVizSVG(bm.bands, bm.cov) +
+      '<p class="cal-note">A bar per 10% step, but only for levels you’ve actually charged through (a faint dot marks the rest — those just use the overall figure). Above the line = slower than the base estimate at that level, below = faster' +
+      (dcN < 3 ? '. With one or two charges the bars stay near the overall figure until more are logged' : '') +
+      '.</p>';
   } else {
     html += '<p class="cal-note">' + (dcN > 0
       ? 'Your rapid (DC) charges are counted in the overall figure above; the per-level chart appears once they carry charge-level detail (log a new one on this version).'
@@ -1593,8 +1605,11 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.13.2";
+var VERSION = "1.13.3";
 var CHANGELOG = [
+  { v: "1.13.3", date: "2026-09-23", notes: [
+    "The DC charge-level chart now only draws a bar for levels you've actually charged through — untouched levels show a faint dot instead of a misleading bar borrowed from the overall figure"
+  ] },
   { v: "1.13.2", date: "2026-09-23", notes: [
     "The session log sliders (start %, finish %, actual time) now ignore accidental thumb-lift nudges, like the main-screen sliders"
   ] },
