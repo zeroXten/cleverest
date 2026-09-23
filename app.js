@@ -6,13 +6,24 @@ var CAR_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 var BOLT_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4 13h6l-1 9 9-12h-6z"/></svg>';
 var CARS_KEY = "cleverest.cars.v1";
 var ACTIVE_KEY = "cleverest.activeCar.v1";
-var DEFAULT_CAR = { id: "demo", name: "Demo EV", battery: 64, eff: 4.0, maxkw: 150 };
+// maxkw is the car's DC (rapid) limit. acSingle / acThree are the onboard AC
+// charging limits (kW) on a single-phase and a three-phase supply.
+var DEFAULT_CAR = { id: "demo", name: "Demo EV", battery: 64, eff: 4.0, maxkw: 150, acSingle: 7, acThree: 11 };
 var CHARGERS_KEY = "cleverest.chargers.v1";
 var ACTIVE_CHARGER_KEY = "cleverest.activeCharger.v1";
+// type: "AC" | "DC". phase (AC only): "single" | "three".
 var DEFAULT_CHARGERS = [
-  { id: "home", name: "Home 7kW", kw: 7, price: 7 },
-  { id: "rapid", name: "Public rapid 50kW", kw: 50, price: 45 }
+  { id: "home", name: "Home 7kW", kw: 7, price: 7, type: "AC", phase: "single" },
+  { id: "rapid", name: "Public rapid 50kW", kw: 50, price: 45, type: "DC", phase: "single" }
 ];
+var SESSIONS_KEY = "cleverest.sessions.v1";
+var MAX_SESSIONS = 50;          // rolling window; oldest dropped past this
+var HALF_LIFE_DAYS = 30;        // a session's calibration weight halves every 30 days
+var SHRINK_K = 1;               // shrinkage: sparse/old data stays near uncorrected
+
+// A charger is AC at or below this power, DC above it (rare exceptions overridable).
+var AC_DC_THRESHOLD = 22;
+function inferType(kw) { return kw > AC_DC_THRESHOLD ? "DC" : "AC"; }
 
 /* ---------- storage (defensive) ---------- */
 function load(key, fallback) {
@@ -78,6 +89,20 @@ if (!Array.isArray(chargers)) {
 }
 var activeChargerId = load(ACTIVE_CHARGER_KEY, null);
 
+/* Migrate saved chargers to carry an AC/DC type (and AC phase). Existing
+   chargers are typed from their power with the same rule new ones default to. */
+(function migrateChargers() {
+  var changed = false;
+  chargers.forEach(function (c) {
+    if (c.type !== "AC" && c.type !== "DC") { c.type = inferType(c.kw); changed = true; }
+    if (c.type === "AC" && c.phase !== "single" && c.phase !== "three") { c.phase = "single"; changed = true; }
+  });
+  if (changed) save(CHARGERS_KEY, chargers);
+})();
+
+var sessions = load(SESSIONS_KEY, []);
+if (!Array.isArray(sessions)) sessions = [];
+
 function activeCar() {
   return cars.find(function (c) { return c.id === activeId; }) || cars[0];
 }
@@ -141,21 +166,87 @@ function curveFactor(curve, soc) {
   if (changed) save(CARS_KEY, cars);
 })();
 
-/* Minutes to charge from -> to (%) on a charger of chargerKw, integrating the
-   curve in 1% steps: dt = dEnergy / power(soc). Power is the lower of the
-   charger's output and what the car will accept at that SoC. If the car has no
-   max rate set, we fall back to a flat charger-limited rate. */
-function chargeMinutes(car, from, to, chargerKw) {
-  if (to <= from || chargerKw <= 0) return 0;
+/* The car's AC charging limit (kW) for a given phase, or null if unknown (in
+   which case AC charging is limited only by the charger). Three-phase falls
+   back to the single-phase figure if not separately set. */
+function acLimit(car, phase) {
+  var single = (car.acSingle > 0) ? car.acSingle : 0;
+  var three = (car.acThree > 0) ? car.acThree : single;
+  var lim = (phase === "three") ? three : single;
+  return lim > 0 ? lim : null;
+}
+
+/* Base (uncorrected) minutes to charge from -> to (%). Charger is an object
+   { kw, type, phase }.
+   DC: integrate the car's charging curve in 1% steps, power capped by the lower
+       of the charger's output and the car's DC limit at that SoC (curve shape).
+   AC: onboard charger is the bottleneck, so charge at a flat rate = the lower of
+       the charger's output and the car's AC limit for that phase (no curve). */
+function baseMinutes(car, from, to, charger) {
+  if (to <= from || !(charger.kw > 0)) return 0;
+
+  if (charger.type === "AC") {
+    var lim = acLimit(car, charger.phase);
+    var rate = lim ? Math.min(charger.kw, lim) : charger.kw;
+    if (!(rate > 0)) return 0;
+    var energy = car.battery * (to - from) / 100;
+    return energy / rate / EFF * 60;
+  }
+
   var STEP = 1, dE = car.battery * STEP / 100, mins = 0;
   for (var s = from; s < to; s += STEP) {
     var mid = Math.min(100, s + STEP / 2);
     var power = (car.maxkw && car.maxkw > 0)
-      ? Math.min(chargerKw, car.maxkw * curveFactor(car.curve, mid))
-      : chargerKw;
+      ? Math.min(charger.kw, car.maxkw * curveFactor(car.curve, mid))
+      : charger.kw;
     if (power > 0) mins += (dE / power) * 60;
   }
   return mins / EFF;
+}
+
+/* ---------- calibration from logged sessions ---------- */
+/* Recency weight for a session: halves every HALF_LIFE_DAYS. */
+function sessionWeight(iso) {
+  var age = (Date.now() - new Date(iso).getTime()) / 86400000;
+  if (!(age >= 0)) age = 0;
+  return Math.pow(0.5, age / HALF_LIFE_DAYS);
+}
+
+/* Weighted, shrunk correction factor from a list of { ratio, iso } pairs, where
+   ratio = actual / predicted. With little or old data the factor stays close to
+   1 (uncorrected); it approaches the recency-weighted mean ratio only once
+   several fresh sessions have accumulated. Clamped to a sane range. */
+function shrunkCorrection(pairs) {
+  var W = 0, WR = 0;
+  pairs.forEach(function (p) {
+    if (!(p.ratio > 0) || !isFinite(p.ratio)) return;
+    var w = sessionWeight(p.iso);
+    W += w; WR += w * p.ratio;
+  });
+  if (W <= 0) return 1;
+  var R = WR / W;                       // recency-weighted mean ratio
+  var f = 1 + (R - 1) * (W / (W + SHRINK_K));
+  return Math.max(0.5, Math.min(2, f));
+}
+
+/* Time correction is per car, split by charger type (AC barely temperature-
+   affected, DC heavily) so the two don't contaminate each other. */
+function timeCorrection(carId, type) {
+  return shrunkCorrection(sessions
+    .filter(function (s) { return s.carId === carId && s.type === type && s.predMins > 0 && s.actualMins > 0; })
+    .map(function (s) { return { ratio: s.actualMins / s.predMins, iso: s.date }; }));
+}
+
+/* Cost correction is per charger/network (tariff changes), independent of car. */
+function costCorrection(chargerId) {
+  if (!chargerId) return 1;
+  return shrunkCorrection(sessions
+    .filter(function (s) { return s.chargerId === chargerId && s.predCost > 0 && s.actualCost > 0; })
+    .map(function (s) { return { ratio: s.actualCost / s.predCost, iso: s.date }; }));
+}
+
+function countSessions(carId, type) {
+  return sessions.filter(function (s) { return s.carId === carId && s.type === type; }).length;
 }
 
 /* Cap the charger-speed slider at the active car's max rate (no point charging
@@ -171,6 +262,22 @@ function updateSpeedRange() {
     "<span>3</span><span>" + m1 + "</span><span>" + m2 + "</span><span>" + maxSpeed + " kW</span>";
 }
 
+/* The charger the main screen is currently estimating with: a saved charger's
+   type/phase when one is selected, otherwise inferred from the speed slider. kw
+   always tracks the (car-capped) speed slider. */
+function currentCharger() {
+  var kw = +$("speed").value;
+  var c = chargers.find(function (x) { return x.id === activeChargerId; });
+  if (c) return { id: c.id, kw: kw, type: c.type, phase: c.phase || "single" };
+  return { id: null, kw: kw, type: inferType(kw), phase: "single" };
+}
+
+/* Human label for a charger's type, e.g. "DC rapid" or "AC · 1-phase". */
+function typeLabel(charger) {
+  if (charger.type === "AC") return "AC · " + (charger.phase === "three" ? "3-phase" : "1-phase");
+  return "DC rapid";
+}
+
 function calc() {
   var car = activeCar();
   var now = +$("now").value;
@@ -179,14 +286,22 @@ function calc() {
   var speed = +$("speed").value;
   if (tgt < now) { tgt = now; $("tgt").value = now; }
 
+  var charger = currentCharger();
   var kwh = car.battery * (tgt - now) / 100;
-  var mins = chargeMinutes(car, now, tgt, speed);
-  var cost = kwh * price / 100;
+  var tCorr = timeCorrection(car.id, charger.type);
+  var cCorr = costCorrection(charger.id);
+  var mins = baseMinutes(car, now, tgt, charger) * tCorr;
+  var cost = kwh * price / 100 * cCorr;
 
   $("vNow").innerHTML = now + "% <small>· " + Math.round(toDisp(milesFor(car, now))) + " " + distUnit() + "</small>";
   $("vTgt").innerHTML = tgt + "% <small>· " + Math.round(toDisp(milesFor(car, tgt))) + " " + distUnit() + "</small>";
   $("vSpeed").textContent = speed + " kW";
   $("vPrice").textContent = price + cur().minor + " /kWh";
+  var ct = $("chargerType");
+  if (ct) {
+    var calibrated = (Math.abs(tCorr - 1) > 0.005 || Math.abs(cCorr - 1) > 0.005);
+    ct.textContent = typeLabel(charger) + (calibrated ? " · calibrated" : "");
+  }
 
   if (kwh <= 0) {
     $("rHeadline").innerHTML = "ALREADY AT " + tgt + "%";
@@ -290,14 +405,17 @@ function showView(which) {
   $("viewCalc").hidden = which !== "calc";
   $("viewCars").hidden = which !== "cars";
   $("viewChargers").hidden = which !== "chargers";
+  $("viewSessions").hidden = which !== "sessions";
   $("viewPrefs").hidden = which !== "prefs";
   if (which === "cars") renderCarList();
   if (which === "chargers") renderChargerList();
+  if (which === "sessions") renderSessions();
   if (which === "prefs") renderPrefs();
   window.scrollTo(0, 0);
 }
 $("doneBtn").addEventListener("click", function () { showView("calc"); });
 $("chgDoneBtn").addEventListener("click", function () { showView("calc"); });
+$("sessDoneBtn").addEventListener("click", function () { showView("calc"); });
 $("prefsDoneBtn").addEventListener("click", function () { showView("calc"); });
 
 /* ---------- hamburger menu ---------- */
@@ -358,6 +476,7 @@ function exportData() {
     app: "cleverest", version: VERSION, exported: new Date().toISOString(),
     cars: load(CARS_KEY, []), activeCar: load(ACTIVE_KEY, null),
     chargers: load(CHARGERS_KEY, []), activeCharger: load(ACTIVE_CHARGER_KEY, null),
+    sessions: load(SESSIONS_KEY, []),
     prefs: load(PREFS_KEY, null)
   };
   var blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -375,6 +494,7 @@ function applyImport(data) {
   if (data.activeCar) save(ACTIVE_KEY, data.activeCar);
   if (Array.isArray(data.chargers)) save(CHARGERS_KEY, data.chargers);
   if ("activeCharger" in data) save(ACTIVE_CHARGER_KEY, data.activeCharger);
+  if (Array.isArray(data.sessions)) save(SESSIONS_KEY, data.sessions);
   if (data.prefs) save(PREFS_KEY, data.prefs);
   return true;
 }
@@ -660,6 +780,8 @@ function openEdit(id) {
   $("fEffUnit").textContent = isKm() ? "km/kWh" : "mi/kWh";
   $("fEff").placeholder = isKm() ? "6.1" : "3.8";
   $("fMax").value = car.maxkw || "";
+  $("fAcSingle").value = car.acSingle || "";
+  $("fAcThree").value = car.acThree || "";
   $("deleteCar").hidden = cars.length <= 1;
   $("formErr").hidden = true;
   draftCurve = (car.curve && car.curve.length === CURVE_SOC.length) ? car.curve.slice() : DEFAULT_CURVE.slice();
@@ -677,6 +799,8 @@ function openAdd() {
   $("fEffUnit").textContent = isKm() ? "km/kWh" : "mi/kWh";
   $("fEff").placeholder = isKm() ? "6.1" : "3.8";
   $("fMax").value = "";
+  $("fAcSingle").value = "";
+  $("fAcThree").value = "";
   $("deleteCar").hidden = true;
   $("formErr").hidden = true;
   draftCurve = DEFAULT_CURVE.slice();
@@ -704,20 +828,27 @@ $("editCard").addEventListener("submit", function (e) {
   var effInput = parseFloat($("fEff").value);
   var maxRaw = $("fMax").value.trim();
   var maxkw = maxRaw === "" ? 0 : parseFloat(maxRaw);
+  var acsRaw = $("fAcSingle").value.trim();
+  var acSingle = acsRaw === "" ? 0 : parseFloat(acsRaw);
+  var actRaw = $("fAcThree").value.trim();
+  var acThree = actRaw === "" ? 0 : parseFloat(actRaw);
 
   if (!name) return showErr("Give the car a name.");
   if (!(battery > 0)) return showErr("Enter the battery size in kWh.");
   if (!(effInput > 0)) return showErr("Enter the efficiency in " + (isKm() ? "km/kWh" : "mi/kWh") + ".");
   var eff = fromDispEff(effInput);
-  if (maxRaw !== "" && !(maxkw > 0)) return showErr("Max charge rate must be a positive number, or leave it blank.");
+  if (maxRaw !== "" && !(maxkw > 0)) return showErr("Max DC rate must be a positive number, or leave it blank.");
+  if (acsRaw !== "" && !(acSingle > 0)) return showErr("Single-phase AC limit must be a positive number, or leave it blank.");
+  if (actRaw !== "" && !(acThree > 0)) return showErr("Three-phase AC limit must be a positive number, or leave it blank.");
 
   var curve = (draftCurve && draftCurve.length === CURVE_SOC.length) ? draftCurve.slice() : DEFAULT_CURVE.slice();
   if (editingId) {
     var car = cars.find(function (c) { return c.id === editingId; });
     car.name = name; car.battery = battery; car.eff = eff; car.maxkw = maxkw; car.curve = curve;
+    car.acSingle = acSingle; car.acThree = acThree;
   } else {
     var id = "car-" + Date.now().toString(36);
-    cars.push({ id: id, name: name, battery: battery, eff: eff, maxkw: maxkw, curve: curve });
+    cars.push({ id: id, name: name, battery: battery, eff: eff, maxkw: maxkw, curve: curve, acSingle: acSingle, acThree: acThree });
     activeId = id; // newly added car becomes active
     save(ACTIVE_KEY, activeId);
   }
@@ -746,6 +877,21 @@ $("deleteCar").addEventListener("click", function () {
 
 /* ---------- chargers manager ---------- */
 var editingChargerId = null;
+var chgDraftType = "AC";       // AC | DC in the open editor
+var chgDraftPhase = "single";  // single | three
+var chgTypeManual = false;     // has the user overridden the auto AC/DC choice?
+
+/* Reflect the draft type/phase into the segmented controls, and only show the
+   AC-phase picker for AC chargers. */
+function renderChgTypeSeg() {
+  Array.prototype.forEach.call($("segChgType").children, function (b) {
+    b.classList.toggle("on", b.getAttribute("data-v") === chgDraftType);
+  });
+  Array.prototype.forEach.call($("segChgPhase").children, function (b) {
+    b.classList.toggle("on", b.getAttribute("data-v") === chgDraftPhase);
+  });
+  $("chgPhaseField").hidden = chgDraftType !== "AC";
+}
 
 /* Selection chips on the main screen (configuration lives on the Chargers page). */
 function renderChargerChips() {
@@ -797,7 +943,7 @@ function renderChargerList() {
     meta.style.cssText = "background:none;border:none;padding:0;text-align:left;cursor:pointer;color:inherit;font:inherit;min-width:0";
     meta.innerHTML = '<p class="nm"></p><p class="mt"></p>';
     meta.querySelector(".nm").textContent = c.name;
-    meta.querySelector(".mt").textContent = c.kw + " kW · " + c.price + cur().minor + "/kWh";
+    meta.querySelector(".mt").textContent = c.kw + " kW · " + typeLabel(c) + " · " + c.price + cur().minor + "/kWh";
     meta.addEventListener("click", function () { openChgEdit(c.id); });
 
     var right = document.createElement("div");
@@ -826,6 +972,10 @@ function openChgEdit(id) {
   $("cSpeed").value = c.kw;
   $("cPrice").value = c.price;
   $("cPriceUnit").textContent = cur().minor + "/kWh";
+  chgDraftType = (c.type === "DC") ? "DC" : "AC";
+  chgDraftPhase = (c.phase === "three") ? "three" : "single";
+  chgTypeManual = true; // an existing charger already has an explicit type
+  renderChgTypeSeg();
   $("chgDelete").hidden = false;
   $("chgErr").hidden = true;
   $("chgEditCard").hidden = false;
@@ -837,6 +987,8 @@ function openChgAdd() {
   $("chgEditTitle").textContent = "Add a charger";
   $("cName").value = ""; $("cSpeed").value = ""; $("cPrice").value = "";
   $("cPriceUnit").textContent = cur().minor + "/kWh";
+  chgDraftType = "AC"; chgDraftPhase = "single"; chgTypeManual = false;
+  renderChgTypeSeg();
   $("chgDelete").hidden = true;
   $("chgErr").hidden = true;
   $("chgEditCard").hidden = false;
@@ -846,6 +998,25 @@ function openChgAdd() {
 
 $("addChargerBtn").addEventListener("click", openChgAdd);
 $("chgCancel").addEventListener("click", function () { $("chgEditCard").hidden = true; });
+
+$("segChgType").addEventListener("click", function (e) {
+  var b = e.target.closest("button[data-v]"); if (!b) return;
+  chgDraftType = b.getAttribute("data-v");
+  chgTypeManual = true; // user has taken control of the type
+  renderChgTypeSeg();
+});
+$("segChgPhase").addEventListener("click", function (e) {
+  var b = e.target.closest("button[data-v]"); if (!b) return;
+  chgDraftPhase = b.getAttribute("data-v");
+  renderChgTypeSeg();
+});
+/* While the user hasn't overridden it, keep the type in step with the power. */
+$("cSpeed").addEventListener("input", function () {
+  if (chgTypeManual) return;
+  var kw = parseFloat(this.value);
+  chgDraftType = (kw > 0) ? inferType(kw) : "AC";
+  renderChgTypeSeg();
+});
 
 function chgShowErr(m) { var e = $("chgErr"); e.textContent = m; e.hidden = false; }
 
@@ -858,11 +1029,12 @@ $("chgEditCard").addEventListener("submit", function (e) {
   if (!(kw > 0)) return chgShowErr("Enter the charge speed in kW.");
   if (!(price >= 0)) return chgShowErr("Enter the price in p/kWh (0 for free).");
 
+  var phase = chgDraftType === "AC" ? chgDraftPhase : "single";
   if (editingChargerId) {
     var c = chargers.find(function (x) { return x.id === editingChargerId; });
-    c.name = name; c.kw = kw; c.price = price;
+    c.name = name; c.kw = kw; c.price = price; c.type = chgDraftType; c.phase = phase;
   } else {
-    chargers.push({ id: "chg-" + Date.now().toString(36), name: name, kw: kw, price: price });
+    chargers.push({ id: "chg-" + Date.now().toString(36), name: name, kw: kw, price: price, type: chgDraftType, phase: phase });
   }
   save(CHARGERS_KEY, chargers);
   $("chgEditCard").hidden = true;
@@ -901,6 +1073,182 @@ $("chgDelete").addEventListener("click", function () {
 wireDragReorder($("carList"), function () { return cars; }, carsChanged);
 wireDragReorder($("chargerList"), function () { return chargers; }, chargersChanged);
 
+/* ---------- charging sessions (calibration) ---------- */
+function sessErr(m) { var e = $("sessErr"); e.textContent = m; e.hidden = false; }
+function clampPct(v) { v = parseFloat(v); if (!(v >= 0)) v = 0; if (v > 100) v = 100; return v; }
+function fmtFactor(f) { return "×" + (Math.round(f * 100) / 100).toFixed(2); }
+
+function fillSessionSelectors() {
+  var carSel = $("sCar"), chgSel = $("sCharger");
+  carSel.innerHTML = ""; chgSel.innerHTML = "";
+  cars.forEach(function (c) {
+    var o = document.createElement("option");
+    o.value = c.id; o.textContent = c.name; carSel.appendChild(o);
+  });
+  chargers.forEach(function (c) {
+    var o = document.createElement("option");
+    o.value = c.id; o.textContent = c.name + " (" + typeLabel(c) + ")"; chgSel.appendChild(o);
+  });
+}
+
+function sessScenario() {
+  var car = cars.find(function (c) { return c.id === $("sCar").value; }) || activeCar();
+  var chg = chargers.find(function (c) { return c.id === $("sCharger").value; }) || null;
+  return { car: car, chg: chg, from: clampPct($("sFrom").value), to: clampPct($("sTo").value) };
+}
+
+/* Live "here's what the app would predict" line under the log form. */
+function updateSessEst() {
+  var sc = sessScenario();
+  $("sCostUnit").textContent = cur().symbol;
+  $("sChargerNote").textContent = sc.chg
+    ? "This charger is " + typeLabel(sc.chg) + " at " + sc.chg.kw + " kW."
+    : "";
+  var est = $("sessEst");
+  if (!sc.chg || !(sc.to > sc.from)) { est.textContent = ""; return; }
+  var chgObj = { id: sc.chg.id, kw: sc.chg.kw, type: sc.chg.type, phase: sc.chg.phase || "single" };
+  var mins = baseMinutes(sc.car, sc.from, sc.to, chgObj) * timeCorrection(sc.car.id, sc.chg.type);
+  var kwh = sc.car.battery * (sc.to - sc.from) / 100;
+  var cost = kwh * sc.chg.price / 100 * costCorrection(sc.chg.id);
+  est.textContent = "App estimate for this: " + fmtTime(mins) + " · " + money(cost);
+}
+
+function openSessionForm() {
+  if (!chargers.length) { sessErr("Add a charger first — a session is logged against one."); $("sessEditCard").hidden = false; return; }
+  fillSessionSelectors();
+  $("sCar").value = activeCar().id;
+  var ac = chargers.find(function (x) { return x.id === activeChargerId; }) || chargers[0];
+  if (ac) $("sCharger").value = ac.id;
+  $("sFrom").value = +$("now").value;
+  $("sTo").value = +$("tgt").value;
+  $("sMins").value = ""; $("sCost").value = ""; $("sTemp").value = "";
+  $("sessErr").hidden = true;
+  $("sessEditCard").hidden = false;
+  updateSessEst();
+  $("sessEditCard").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function calCell(label, n, f) {
+  var val = n > 0 ? fmtFactor(f) : "—";
+  var sub = n > 0 ? (n + " session" + (n === 1 ? "" : "s")) : "no data yet";
+  return '<div class="cal-cell"><span class="cal-lab">' + escapeHtml(label) + '</span>' +
+    '<span class="cal-val">' + val + '</span><span class="cal-sub">' + sub + '</span></div>';
+}
+
+function renderCalSummary() {
+  var el = $("calSummary"); if (!el) return;
+  var car = activeCar();
+  var html = '<p class="cal-h">Time calibration · ' + escapeHtml(car.name) + '</p><div class="cal-grid">';
+  html += calCell("DC (rapid)", countSessions(car.id, "DC"), timeCorrection(car.id, "DC"));
+  html += calCell("AC", countSessions(car.id, "AC"), timeCorrection(car.id, "AC"));
+  html += '</div>';
+  var costRows = chargers.map(function (c) {
+    return { name: c.name, n: sessions.filter(function (s) { return s.chargerId === c.id; }).length, f: costCorrection(c.id) };
+  }).filter(function (r) { return r.n > 0; });
+  if (costRows.length) {
+    html += '<p class="cal-h">Cost calibration</p><div class="cal-grid">';
+    costRows.forEach(function (r) { html += calCell(r.name, r.n, r.f); });
+    html += '</div>';
+  }
+  el.innerHTML = html;
+}
+
+function renderSessionList() {
+  var list = $("sessionList"); if (!list) return;
+  list.innerHTML = "";
+  if (!sessions.length) {
+    var p = document.createElement("p");
+    p.className = "chips-empty";
+    p.textContent = "No sessions logged yet — log one after your next charge.";
+    list.appendChild(p);
+    return;
+  }
+  sessions.slice().sort(function (a, b) { return new Date(b.date) - new Date(a.date); }).forEach(function (s) {
+    var car = cars.find(function (c) { return c.id === s.carId; });
+    var chg = chargers.find(function (c) { return c.id === s.chargerId; });
+    var row = document.createElement("div");
+    row.className = "carrow";
+
+    var meta = document.createElement("div");
+    meta.className = "meta"; meta.style.minWidth = "0";
+    meta.innerHTML = '<p class="nm"></p><p class="mt"></p>';
+    var when = new Date(s.date).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+    meta.querySelector(".nm").textContent = when + " · " + (car ? car.name : "?") + " · " + (chg ? chg.name : "?") + " · " + s.type;
+    meta.querySelector(".mt").textContent =
+      s.fromPct + "→" + s.toPct + "% · " + fmtTime(s.actualMins) + " (est " + fmtTime(s.predMins) + ") · " +
+      money(s.actualCost) + " (est " + money(s.predCost) + ")" + (s.temp != null ? " · " + s.temp + "°C" : "");
+
+    var right = document.createElement("div");
+    right.style.cssText = "flex:none";
+    var del = document.createElement("button");
+    del.className = "editlink danger"; del.textContent = "Delete";
+    del.setAttribute("data-del", s.id);
+    right.appendChild(del);
+
+    row.appendChild(meta); row.appendChild(right);
+    list.appendChild(row);
+  });
+}
+
+function renderSessions() {
+  $("sessEditCard").hidden = true;
+  renderCalSummary();
+  renderSessionList();
+  var mc = $("mSessionCount"); if (mc) mc.textContent = String(sessions.length);
+}
+
+$("addSessionBtn").addEventListener("click", openSessionForm);
+$("sessCancel").addEventListener("click", function () { $("sessEditCard").hidden = true; });
+["sCar", "sCharger", "sFrom", "sTo"].forEach(function (id) {
+  $(id).addEventListener("input", updateSessEst);
+  $(id).addEventListener("change", updateSessEst);
+});
+
+$("sessEditCard").addEventListener("submit", function (e) {
+  e.preventDefault();
+  var sc = sessScenario();
+  if (!sc.chg) return sessErr("Pick a charger.");
+  if (!(sc.to > sc.from)) return sessErr("The finish % must be above the start %.");
+  var mins = parseFloat($("sMins").value);
+  var cost = parseFloat($("sCost").value);
+  if (!(mins > 0)) return sessErr("Enter the actual time in minutes.");
+  if (!(cost >= 0)) return sessErr("Enter the actual cost.");
+  var tempRaw = $("sTemp").value.trim();
+  var temp = tempRaw === "" ? null : parseFloat(tempRaw);
+
+  var chgObj = { id: sc.chg.id, kw: sc.chg.kw, type: sc.chg.type, phase: sc.chg.phase || "single" };
+  var predMins = baseMinutes(sc.car, sc.from, sc.to, chgObj);
+  var kwh = sc.car.battery * (sc.to - sc.from) / 100;
+  var predCost = kwh * sc.chg.price / 100;
+
+  sessions.push({
+    id: "sess-" + Date.now().toString(36),
+    date: new Date().toISOString(),
+    carId: sc.car.id, chargerId: sc.chg.id,
+    type: sc.chg.type, phase: sc.chg.phase || "single",
+    fromPct: sc.from, toPct: sc.to,
+    actualMins: mins, actualCost: cost,
+    predMins: predMins, predCost: predCost,
+    temp: (temp === null || isNaN(temp)) ? null : temp
+  });
+  sessions.sort(function (a, b) { return new Date(a.date) - new Date(b.date); });
+  if (sessions.length > MAX_SESSIONS) sessions = sessions.slice(sessions.length - MAX_SESSIONS);
+  save(SESSIONS_KEY, sessions);
+
+  $("sessEditCard").hidden = true;
+  renderSessions();
+  calc(); // corrections have changed
+});
+
+$("sessionList").addEventListener("click", function (e) {
+  var b = e.target.closest("button[data-del]"); if (!b) return;
+  var id = b.getAttribute("data-del");
+  sessions = sessions.filter(function (s) { return s.id !== id; });
+  save(SESSIONS_KEY, sessions);
+  renderSessions();
+  calc();
+});
+
 /* ---------- compare my chargers ---------- */
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, function (ch) {
@@ -922,7 +1270,13 @@ function renderCompare() {
   var kwh = car.battery * Math.max(0, tgt - now) / 100;
 
   var rows = chargers.map(function (c) {
-    return { name: c.name, mins: chargeMinutes(car, now, tgt, c.kw), cost: kwh * c.price / 100, active: c.id === activeChargerId };
+    var chg = { id: c.id, kw: c.kw, type: c.type, phase: c.phase || "single" };
+    return {
+      name: c.name,
+      mins: baseMinutes(car, now, tgt, chg) * timeCorrection(car.id, c.type),
+      cost: kwh * c.price / 100 * costCorrection(c.id),
+      active: c.id === activeChargerId
+    };
   });
   var minTime = Math.min.apply(null, rows.map(function (r) { return r.mins; }));
   var minCost = Math.min.apply(null, rows.map(function (r) { return r.cost; }));
@@ -989,8 +1343,14 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.9.0";
+var VERSION = "1.10.0";
 var CHANGELOG = [
+  { v: "1.10.0", date: "2026-09-23", notes: [
+    "Chargers now know if they're AC or DC (and single- or three-phase for AC) — set automatically from the power, override anytime",
+    "Cars have separate AC charging limits (single- and three-phase) alongside the DC rapid rate, so AC estimates aren't overstated",
+    "Smarter estimates: DC follows your curve, AC charges at a flat rate capped by the car's onboard limit",
+    "New Sessions page — log a real charge and the app quietly calibrates future time and cost estimates to your car and chargers (recent sessions count most)"
+  ] },
   { v: "1.9.0", date: "2026-09-22", notes: [
     "Drag your cars and chargers into any order with the grip handle — the main-screen chips follow the same order"
   ] },
@@ -1146,6 +1506,7 @@ renderHeader();
 renderCarChips();
 renderChargerChips();
 renderPrefs();
+(function () { var mc = $("mSessionCount"); if (mc) mc.textContent = String(sessions.length); })();
 applyPriceMax();
 updateSpeedRange();
 (function () {
