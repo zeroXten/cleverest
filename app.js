@@ -216,8 +216,8 @@ function dcIntegrate(car, from, to, chargerKw, mAt) {
 }
 
 /* ---------- SoC-band-aware DC time calibration ---------- */
-var DC_BANDS = [0, 40, 70, 85, 100];  // 4 bands: low, mid, knee, top
-var BAND_LAMBDA = 1;                    // ridge shrinkage of each band toward the flat factor
+var DC_BANDS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];  // ten even 10% bands
+var BAND_LAMBDA = 0.3;                  // ridge shrinkage of each band toward the flat factor
 
 function bandIndex(soc) {
   for (var i = 1; i < DC_BANDS.length; i++) { if (soc <= DC_BANDS[i]) return i - 1; }
@@ -1308,6 +1308,29 @@ function calCell(label, n, f) {
     '<span class="cal-val">' + val + '</span><span class="cal-sub">' + sub + '</span></div>';
 }
 
+/* Compact bar chart of the per-band DC time multipliers, baseline at ×1.00. */
+function bandVizSVG(bands) {
+  var B = bands.length, W = 320, H = 104, pl = 8, pr = 8, pt = 10, pb = 20;
+  var x0 = pl, x1 = W - pr, y0 = H - pb, y1 = pt;
+  var maxDev = 0.12;
+  bands.forEach(function (m) { maxDev = Math.max(maxDev, Math.abs(m - 1)); });
+  var lo = 1 - maxDev * 1.15, hi = 1 + maxDev * 1.15;
+  function Y(m) { return y0 - ((m - lo) / (hi - lo)) * (y0 - y1); }
+  var base = Y(1), bw = (x1 - x0) / B, out = "";
+  out += '<line class="bviz-base" x1="' + x0 + '" y1="' + base.toFixed(1) + '" x2="' + x1 + '" y2="' + base.toFixed(1) + '"/>';
+  for (var i = 0; i < B; i++) {
+    var m = bands[i], bx = x0 + i * bw + bw * 0.16, wi = bw * 0.68;
+    var by = Y(m), top = Math.min(by, base), h = Math.max(1, Math.abs(by - base));
+    out += '<rect class="' + (m >= 1 ? "bviz-hi" : "bviz-lo") + '" x="' + bx.toFixed(1) + '" y="' + top.toFixed(1) +
+      '" width="' + wi.toFixed(1) + '" height="' + h.toFixed(1) + '" rx="2"/>';
+  }
+  [0, 50, 100].forEach(function (p) {
+    var lx = x0 + (p / 100) * (x1 - x0);
+    out += '<text class="bviz-x" x="' + lx.toFixed(1) + '" y="' + (H - 5) + '">' + p + '%</text>';
+  });
+  return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="bviz" role="img" aria-label="DC charge time correction by state of charge, relative to the base estimate. The dashed line is the base estimate; bars above it are slower, below are faster.">' + out + '</svg>';
+}
+
 function renderCalSummary() {
   var el = $("calSummary"); if (!el) return;
   var car = activeCar();
@@ -1317,11 +1340,8 @@ function renderCalSummary() {
   html += '</div>';
   var bm = dcBandMultipliers(car.id);
   if (bm.bands) {
-    html += '<p class="cal-h">DC time by charge level</p><div class="cal-bands">';
-    bm.bands.forEach(function (m, i) {
-      html += '<span class="cal-band"><b>' + DC_BANDS[i] + '–' + DC_BANDS[i + 1] + '%</b>' + fmtFactor(m) + '</span>';
-    });
-    html += '</div>';
+    html += '<p class="cal-h">DC time by charge level</p>' + bandVizSVG(bm.bands) +
+      '<p class="cal-note">Each bar is one 10% step. Above the line = slower than the base estimate at that charge level, below = faster. Levels you’ve rarely charged through sit at the overall figure.</p>';
   }
   var tempN = sessions.filter(function (s) { return s.carId === car.id && s.type === "DC" && s.temp != null && !isNaN(s.temp); }).length;
   if (tempN >= 2) html += '<p class="cal-note">DC time also flexes with the ambient temperature you set on the calculator — learning from ' + tempN + ' temperature-tagged session' + (tempN === 1 ? '' : 's') + '.</p>';
@@ -1542,8 +1562,12 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.12.0";
+var VERSION = "1.13.0";
 var CHANGELOG = [
+  { v: "1.13.0", date: "2026-09-23", notes: [
+    "Rapid (DC) calibration now uses even 10% charge-level bands (was a few uneven bands) — a more uniform, statistically cleaner split; part-covered bands count in proportion",
+    "The Sessions page shows a little chart of how much each 10% step runs slower or faster than the base estimate"
+  ] },
   { v: "1.12.0", date: "2026-09-23", notes: [
     "Rapid (DC) calibration now reshapes the curve instead of scaling it uniformly — it works out which part of the charge (e.g. above 80%) your car was off on, and only adjusts that part",
     "About page now explains how the app learns from your logged sessions — recency, caution when data is thin, per-band DC time, temperature and real price per kWh"
