@@ -193,15 +193,115 @@ function baseMinutes(car, from, to, charger) {
     return energy / rate / EFF * 60;
   }
 
+  return dcIntegrate(car, from, to, charger.kw, null);
+}
+
+/* Integrate DC charge time over [from,to] in 1% steps. mAt, if given, is a
+   function(soc) returning a per-step time multiplier — used to apply a
+   SoC-band-aware calibration that reshapes the curve rather than just scaling it. */
+function dcIntegrate(car, from, to, chargerKw, mAt) {
+  if (to <= from || !(chargerKw > 0)) return 0;
   var STEP = 1, dE = car.battery * STEP / 100, mins = 0;
   for (var s = from; s < to; s += STEP) {
     var mid = Math.min(100, s + STEP / 2);
     var power = (car.maxkw && car.maxkw > 0)
-      ? Math.min(charger.kw, car.maxkw * curveFactor(car.curve, mid))
-      : charger.kw;
-    if (power > 0) mins += (dE / power) * 60;
+      ? Math.min(chargerKw, car.maxkw * curveFactor(car.curve, mid))
+      : chargerKw;
+    if (power > 0) {
+      var dt = (dE / power) * 60 / EFF;
+      mins += mAt ? dt * mAt(mid) : dt;
+    }
   }
-  return mins / EFF;
+  return mins;
+}
+
+/* ---------- SoC-band-aware DC time calibration ---------- */
+var DC_BANDS = [0, 40, 70, 85, 100];  // 4 bands: low, mid, knee, top
+var BAND_LAMBDA = 1;                    // ridge shrinkage of each band toward the flat factor
+
+function bandIndex(soc) {
+  for (var i = 1; i < DC_BANDS.length; i++) { if (soc <= DC_BANDS[i]) return i - 1; }
+  return DC_BANDS.length - 2;
+}
+function bandCount() { return DC_BANDS.length - 1; }
+
+/* Fraction of a DC charge's predicted time that falls in each SoC band, for the
+   given range/charger. Stored on a session at log time so the deconvolution
+   stays consistent even if the car or charger is later edited. */
+function bandFractions(car, from, to, chargerKw) {
+  var B = bandCount(), mins = [], total = 0, s, i;
+  for (i = 0; i < B; i++) mins.push(0);
+  var STEP = 1, dE = car.battery * STEP / 100;
+  for (s = from; s < to; s += STEP) {
+    var mid = Math.min(100, s + STEP / 2);
+    var power = (car.maxkw && car.maxkw > 0)
+      ? Math.min(chargerKw, car.maxkw * curveFactor(car.curve, mid))
+      : chargerKw;
+    if (power > 0) { var dt = (dE / power) * 60 / EFF; mins[bandIndex(mid)] += dt; total += dt; }
+  }
+  if (!(total > 0)) return null;
+  return mins.map(function (m) { return m / total; });
+}
+
+/* Solve the small linear system A x = b (Gauss-Jordan, partial pivot). */
+function solveLinear(A, b) {
+  var n = b.length, M = A.map(function (row, i) { return row.slice().concat([b[i]]); });
+  for (var col = 0; col < n; col++) {
+    var piv = col, r, j;
+    for (r = col + 1; r < n; r++) if (Math.abs(M[r][col]) > Math.abs(M[piv][col])) piv = r;
+    if (Math.abs(M[piv][col]) < 1e-9) return null;
+    var t = M[col]; M[col] = M[piv]; M[piv] = t;
+    var pv = M[col][col];
+    for (j = col; j <= n; j++) M[col][j] /= pv;
+    for (r = 0; r < n; r++) if (r !== col) { var f = M[r][col]; for (j = col; j <= n; j++) M[r][j] -= f * M[col][j]; }
+  }
+  return M.map(function (row) { return row[n]; });
+}
+
+/* Learn per-band DC time multipliers by ridge-regularised deconvolution of the
+   logged sessions: each session constrains a weighted sum of its bands' factors
+   to equal its overall actual/predicted ratio. Bands with little coverage are
+   pulled back to the flat DC factor, so sparse data reshapes nothing. Returns
+   { bands: [m0..], g } — bands is null when there's nothing to fit. */
+function dcBandMultipliers(carId) {
+  var g = timeCorrection(carId, "DC");
+  var B = bandCount();
+  var rows = sessions.filter(function (s) {
+    return s.carId === carId && s.type === "DC" && s.predMins > 0 && s.actualMins > 0 &&
+      Array.isArray(s.bands) && s.bands.length === B;
+  }).map(function (s) {
+    return { f: s.bands, r: s.actualMins / s.predMins, w: sessionWeight(s.date) };
+  });
+  if (!rows.length) return { bands: null, g: g };
+
+  var F = [], c = [], a, b;
+  for (a = 0; a < B; a++) { F.push(new Array(B).fill(0)); c.push(0); }
+  rows.forEach(function (row) {
+    for (a = 0; a < B; a++) {
+      c[a] += row.w * row.f[a] * row.r;
+      for (b = 0; b < B; b++) F[a][b] += row.w * row.f[a] * row.f[b];
+    }
+  });
+  for (a = 0; a < B; a++) { F[a][a] += BAND_LAMBDA; c[a] += BAND_LAMBDA * g; }
+
+  var m = solveLinear(F, c);
+  if (!m) return { bands: null, g: g };
+  m = m.map(function (x) { return Math.max(0.5, Math.min(2, x)); });
+  return { bands: m, g: g };
+}
+
+/* Final corrected DC minutes: reshape the curve with the band multipliers (or
+   the flat factor when unfitted), then apply the current-temperature factor. */
+function dcEstimateMinutes(car, from, to, chargerKw, temp) {
+  var mult = dcBandMultipliers(car.id);
+  var mAt = function (soc) { return mult.bands ? mult.bands[bandIndex(soc)] : mult.g; };
+  return dcIntegrate(car, from, to, chargerKw, mAt) * dcTempFactor(car.id, temp);
+}
+
+/* Unified corrected estimate for any charger, temperature-aware for DC. */
+function estimateMinutes(car, from, to, charger, temp) {
+  if (charger.type === "AC") return baseMinutes(car, from, to, charger) * timeCorrection(car.id, "AC");
+  return dcEstimateMinutes(car, from, to, charger.kw, temp);
 }
 
 /* ---------- calibration from logged sessions ---------- */
@@ -290,11 +390,6 @@ function dcTempFactor(carId, temp) {
   return Math.max(0.6, Math.min(1.8, Math.exp(slope * (tMean - temp))));
 }
 
-/* DC time correction including the current-temperature adjustment, if given. */
-function dcTimeCorrection(carId, temp) {
-  return timeCorrection(carId, "DC") * dcTempFactor(carId, temp);
-}
-
 /* Current ambient temperature from the main-screen field, or null if blank. */
 function currentAmbient() {
   var el = $("ambient");
@@ -303,11 +398,6 @@ function currentAmbient() {
   if (v === "") return null;
   var n = parseFloat(v);
   return isNaN(n) ? null : n;
-}
-
-/* The right time correction for a charger type, temperature-aware for DC. */
-function timeCorrectionFor(carId, type, temp) {
-  return type === "DC" ? dcTimeCorrection(carId, temp) : timeCorrection(carId, "AC");
 }
 
 /* Cap the charger-speed slider at the active car's max rate (no point charging
@@ -354,9 +444,9 @@ function calc() {
   var ambient = currentAmbient();
   var va = $("vAmbient");
   if (va) va.textContent = (charger.type === "DC" && ambient != null) ? ambient + "°C" : "";
-  var tCorr = timeCorrectionFor(car.id, charger.type, ambient);
+  var baseM = baseMinutes(car, now, tgt, charger);
+  var mins = estimateMinutes(car, now, tgt, charger, ambient);
   var cCorr = costCorrection(charger.id);
-  var mins = baseMinutes(car, now, tgt, charger) * tCorr;
   var cost = kwh * price / 100 * cCorr;
 
   $("vNow").innerHTML = now + "% <small>· " + Math.round(toDisp(milesFor(car, now))) + " " + distUnit() + "</small>";
@@ -365,7 +455,8 @@ function calc() {
   $("vPrice").textContent = price + cur().minor + " /kWh";
   var ct = $("chargerType");
   if (ct) {
-    var calibrated = (Math.abs(tCorr - 1) > 0.005 || Math.abs(cCorr - 1) > 0.005);
+    var timeCal = baseM > 0 && Math.abs(mins / baseM - 1) > 0.005;
+    var calibrated = timeCal || Math.abs(cCorr - 1) > 0.005;
     ct.textContent = typeLabel(charger) + (calibrated ? " · calibrated" : "");
   }
 
@@ -1188,7 +1279,7 @@ function updateSessEst() {
   var est = $("sessEst");
   if (!sc.chg || !(sc.to > sc.from)) { est.textContent = ""; return; }
   var chgObj = { id: sc.chg.id, kw: sc.chg.kw, type: sc.chg.type, phase: sc.chg.phase || "single" };
-  var mins = baseMinutes(sc.car, sc.from, sc.to, chgObj) * timeCorrectionFor(sc.car.id, sc.chg.type, sessTemp());
+  var mins = estimateMinutes(sc.car, sc.from, sc.to, chgObj, sessTemp());
   var kwh = sc.car.battery * (sc.to - sc.from) / 100;
   var cost = kwh * sc.chg.price / 100 * costCorrection(sc.chg.id);
   est.textContent = "App estimate for this: " + fmtTime(mins) + " · " + money(cost);
@@ -1224,6 +1315,14 @@ function renderCalSummary() {
   html += calCell("DC (rapid)", countSessions(car.id, "DC"), timeCorrection(car.id, "DC"));
   html += calCell("AC", countSessions(car.id, "AC"), timeCorrection(car.id, "AC"));
   html += '</div>';
+  var bm = dcBandMultipliers(car.id);
+  if (bm.bands) {
+    html += '<p class="cal-h">DC time by charge level</p><div class="cal-bands">';
+    bm.bands.forEach(function (m, i) {
+      html += '<span class="cal-band"><b>' + DC_BANDS[i] + '–' + DC_BANDS[i + 1] + '%</b>' + fmtFactor(m) + '</span>';
+    });
+    html += '</div>';
+  }
   var tempN = sessions.filter(function (s) { return s.carId === car.id && s.type === "DC" && s.temp != null && !isNaN(s.temp); }).length;
   if (tempN >= 2) html += '<p class="cal-note">DC time also flexes with the ambient temperature you set on the calculator — learning from ' + tempN + ' temperature-tagged session' + (tempN === 1 ? '' : 's') + '.</p>';
   var costRows = chargers.map(function (c) {
@@ -1314,6 +1413,9 @@ $("sessEditCard").addEventListener("submit", function (e) {
   var predMins = baseMinutes(sc.car, sc.from, sc.to, chgObj);
   var predKwh = sc.car.battery * (sc.to - sc.from) / 100;
   var predCost = predKwh * sc.chg.price / 100;
+  // For DC, remember how the predicted time split across SoC bands, so the
+  // band-aware calibration can attribute error to the right part of the curve.
+  var bands = (sc.chg.type === "DC") ? bandFractions(sc.car, sc.from, sc.to, sc.chg.kw) : null;
 
   sessions.push({
     id: "sess-" + Date.now().toString(36),
@@ -1324,6 +1426,7 @@ $("sessEditCard").addEventListener("submit", function (e) {
     actualMins: mins, actualCost: cost,
     actualKwh: (actualKwh === null || isNaN(actualKwh)) ? null : actualKwh,
     predMins: predMins, predKwh: predKwh, predCost: predCost,
+    bands: bands,
     temp: (temp === null || isNaN(temp)) ? null : temp
   });
   sessions.sort(function (a, b) { return new Date(a.date) - new Date(b.date); });
@@ -1369,7 +1472,7 @@ function renderCompare() {
     var chg = { id: c.id, kw: c.kw, type: c.type, phase: c.phase || "single" };
     return {
       name: c.name,
-      mins: baseMinutes(car, now, tgt, chg) * timeCorrectionFor(car.id, c.type, ambient),
+      mins: estimateMinutes(car, now, tgt, chg, ambient),
       cost: kwh * c.price / 100 * costCorrection(c.id),
       active: c.id === activeChargerId
     };
@@ -1439,8 +1542,12 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.11.0";
+var VERSION = "1.12.0";
 var CHANGELOG = [
+  { v: "1.12.0", date: "2026-09-23", notes: [
+    "Rapid (DC) calibration now reshapes the curve instead of scaling it uniformly — it works out which part of the charge (e.g. above 80%) your car was off on, and only adjusts that part",
+    "About page now explains how the app learns from your logged sessions — recency, caution when data is thin, per-band DC time, temperature and real price per kWh"
+  ] },
   { v: "1.11.0", date: "2026-09-23", notes: [
     "Log a session with sliders for start %, finish % and actual time",
     "Record the energy delivered (kWh) from your charge receipt — the app learns your real price per kWh, so cost calibration tracks the tariff rather than guessing at energy",

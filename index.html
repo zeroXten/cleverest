@@ -402,8 +402,19 @@
           <li><b>Rapid DC</b> near the car's peak — the curve takes over and the last stretch slows right down.</li>
         </ul>
 
-        <h3>What it can't know</h3>
-        <p>It uses a generic curve, not your car's exact one, and it can't see the <b>battery temperature</b> or whether you've <b>preconditioned</b> — both change real-world speed. It's most accurate on a fast charger in the 10–80% range. A solid ballpark, not a stopwatch.</p>
+        <h3>What it can't know up front</h3>
+        <p>It uses a generic curve, not your car's exact one, and it can't see the <b>battery temperature</b> or whether you've <b>preconditioned</b> — both change real-world speed. It's most accurate on a fast charger in the 10–80% range. A solid ballpark, not a stopwatch — but it gets sharper the more you tell it (below).</p>
+
+        <h3>Learning from your charges</h3>
+        <p>On the <b>Sessions</b> screen you can log what actually happened after a charge — start and finish %, the real time and cost, optionally the energy delivered (kWh) and the temperature. The app compares each one against what it predicted and quietly corrects future estimates. Nothing leaves your device.</p>
+        <p>A few principles keep it honest:</p>
+        <ul>
+          <li><b>Recent charges count most.</b> Each session's influence halves roughly every 30 days, so a tariff change or a new habit is followed, not drowned out by old data.</li>
+          <li><b>It stays cautious when data is thin.</b> One session nudges the estimate part-way, not all the way to its own result; it takes several consistent, recent charges to move it fully. With no data it does nothing.</li>
+          <li><b>The pieces are kept separate.</b> <b>Time</b> is corrected per car, split into AC and rapid <b>DC</b> (which behave very differently). <b>Cost</b> is corrected per charger — and if you logged the energy, it learns your real <b>price per kWh</b> rather than guessing at how much energy went in.</li>
+        </ul>
+        <p><b>Reshaping the curve, not just scaling it.</b> For rapid DC, the time correction isn't a single blanket multiplier. The charge is split into SoC bands (0–40, 40–70, 70–85, 85–100%), and your sessions are unpicked to work out which <i>part</i> of the curve was off. So if your car dawdles from 80% up but is spot-on lower down, only the top of the estimate stretches. Bands you've charged through little fall back to the overall figure until there's enough data.</p>
+        <p><b>Temperature.</b> Cold slows rapid charging; AC is barely affected. Once a few DC sessions carry a logged temperature, the app learns how much your car slows per degree. Put today's temperature in the optional field on the calculator (it appears for DC chargers) and the rapid estimate adjusts to match.</p>
 
         <h3>Cost and range</h3>
         <p><b>Cost</b> = energy added × your <b>price</b> per kWh. <b>Range</b> = battery size × charge level × your car's <b>efficiency</b> (mi/kWh).</p>
