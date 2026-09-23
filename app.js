@@ -517,7 +517,7 @@ $("ambient").addEventListener("input", calc);
    settled on a value (held it still for a beat), a small change that happens at
    the instant you release is treated as lift-jitter and snapped back. A
    deliberate move — dragging to a new spot and holding it — is kept. */
-function addSettleGuard(slider) {
+function addSettleGuard(slider, onSnap) {
   var SETTLE_MS = 200;   // held still this long => "settled" on this value
   var LIFT_MS = 220;     // a change this close to release counts as a lift-nudge
   var settled = null;
@@ -542,7 +542,7 @@ function addSettleGuard(slider) {
         (performance.now() - lastChange) < LIFT_MS &&
         Math.abs(+slider.value - settled) <= jitter) {
       slider.value = settled;
-      calc();
+      (onSnap || calc)();
     }
     settled = null;
   }
@@ -551,6 +551,7 @@ function addSettleGuard(slider) {
   slider.addEventListener("touchend", release);
 }
 ["now", "tgt", "price", "speed"].forEach(function (id) { addSettleGuard($(id)); });
+["sFrom", "sTo", "sMins"].forEach(function (id) { addSettleGuard($(id), updateSessSliders); });
 
 /* ---------- header / active car ---------- */
 function renderHeader() {
@@ -1592,8 +1593,11 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.13.1";
+var VERSION = "1.13.2";
 var CHANGELOG = [
+  { v: "1.13.2", date: "2026-09-23", notes: [
+    "The session log sliders (start %, finish %, actual time) now ignore accidental thumb-lift nudges, like the main-screen sliders"
+  ] },
   { v: "1.13.1", date: "2026-09-23", notes: [
     "The DC charge-level chart now shows a clear placeholder before there's data (it was simply blank), and older logged charges are backfilled so they count toward it"
   ] },
