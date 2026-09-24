@@ -1672,8 +1672,11 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.14.0";
+var VERSION = "1.14.1";
 var CHANGELOG = [
+  { v: "1.14.1", date: "2026-09-24", notes: [
+    "Fixed the update/status pill not dismissing — “you’re up to date” and the dismiss button now clear it properly"
+  ] },
   { v: "1.14.0", date: "2026-09-24", notes: [
     "Loads instantly from its own cache and works properly offline, even on a weak signal (it no longer waits on the network first)",
     "Updates arrive quietly in the background and never interrupt you — a small “Update ready” prompt appears when a new version is waiting, applied only when you tap refresh",

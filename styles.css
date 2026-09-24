@@ -323,6 +323,7 @@ input[type=range]:focus-visible{box-shadow:0 0 0 3px rgba(46,197,255,.35)}
   background:var(--c5);border:none;border-radius:9px;padding:8px 14px;cursor:pointer;flex:none;
 }
 .update-x{background:none;border:none;color:var(--ink-faint);font-size:14px;line-height:1;cursor:pointer;padding:4px 6px;flex:none}
+.update-pill[hidden]{display:none}
 .update-pill.toast{padding:9px 16px}
 .update-pill.toast .update-apply,.update-pill.toast .update-x{display:none}
 @keyframes pill-in{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}
