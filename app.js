@@ -616,6 +616,7 @@ $("menuSheet").addEventListener("click", function (e) {
   var go = b.getAttribute("data-go");
   closeMenu();
   if (go === "about") openAbout();
+  else if (go === "update") checkForUpdates();
   else showView(go);
 });
 document.addEventListener("click", function (e) {
@@ -1597,16 +1598,87 @@ window.addEventListener("appinstalled", function () {
   if (isIOS && !isStandalone()) $("iosHint").hidden = false;
 })();
 
-/* ---------- service worker ---------- */
+/* ---------- service worker + non-intrusive updates ----------
+   The worker serves the app from cache (fast, offline) and refreshes in the
+   background. A new version installs and waits; we surface a small "Update
+   ready" pill and a "Check for updates" menu item, and only reload when the
+   user asks — never mid-session. */
+var swReg = null;
+var swReloading = false;
+var swUpdateInitiated = false;   // only reload on controllerchange the user asked for
+
+/* Transient status line (Checking… / You're up to date). */
+function swToast(msg) {
+  var pill = $("updatePill"); if (!pill) return;
+  $("updateMsg").textContent = msg;
+  pill.classList.add("toast");            // hides the action buttons
+  pill.hidden = false;
+  clearTimeout(swToast._t);
+  swToast._t = setTimeout(function () { if (pill.classList.contains("toast")) pill.hidden = true; }, 2400);
+}
+
+/* Persistent "update ready" prompt with Refresh / dismiss. */
+function showUpdatePill() {
+  var pill = $("updatePill"); if (!pill) return;
+  clearTimeout(swToast._t);
+  $("updateMsg").textContent = "Update ready";
+  pill.classList.remove("toast");
+  pill.hidden = false;
+}
+
+function applyUpdate() {
+  var w = swReg && swReg.waiting;
+  if (w) { swUpdateInitiated = true; w.postMessage({ type: "SKIP_WAITING" }); } // -> activates -> controllerchange -> reload
+  else { $("updatePill").hidden = true; }
+}
+
+function checkForUpdates() {
+  if (!("serviceWorker" in navigator) || !swReg) { swToast("Updates unavailable"); return; }
+  swToast("Checking…");
+  swReg.update().then(function () {
+    setTimeout(function () {
+      if (swReg.waiting) showUpdatePill();
+      else if (!swReg.installing) swToast("You’re up to date");
+      // if installing, the updatefound handler will show the pill when ready
+    }, 900);
+  }).catch(function () { swToast("Couldn’t check just now"); });
+}
+
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", function () {
-    navigator.serviceWorker.register("sw.js").catch(function () {});
+    navigator.serviceWorker.register("sw.js").then(function (reg) {
+      swReg = reg;
+      if (reg.waiting && navigator.serviceWorker.controller) showUpdatePill();
+      reg.addEventListener("updatefound", function () {
+        var nw = reg.installing;
+        if (!nw) return;
+        nw.addEventListener("statechange", function () {
+          // "installed" while a worker already controls the page => it's an update, not first install
+          if (nw.state === "installed" && navigator.serviceWorker.controller) showUpdatePill();
+        });
+      });
+    }).catch(function () {});
+
+    navigator.serviceWorker.addEventListener("controllerchange", function () {
+      // Only reload for an update the user applied — not the first-install claim.
+      if (!swUpdateInitiated || swReloading) return;
+      swReloading = true;
+      window.location.reload();
+    });
   });
+
+  $("updateApply").addEventListener("click", applyUpdate);
+  $("updateDismiss").addEventListener("click", function () { $("updatePill").hidden = true; });
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.13.3";
+var VERSION = "1.14.0";
 var CHANGELOG = [
+  { v: "1.14.0", date: "2026-09-24", notes: [
+    "Loads instantly from its own cache and works properly offline, even on a weak signal (it no longer waits on the network first)",
+    "Updates arrive quietly in the background and never interrupt you — a small “Update ready” prompt appears when a new version is waiting, applied only when you tap refresh",
+    "Added “Check for updates” to the menu"
+  ] },
   { v: "1.13.3", date: "2026-09-23", notes: [
     "The DC charge-level chart now only draws a bar for levels you've actually charged through — untouched levels show a faint dot instead of a misleading bar borrowed from the overall figure"
   ] },
