@@ -182,6 +182,10 @@ input[type=range]:focus-visible{box-shadow:0 0 0 3px rgba(46,197,255,.35)}
 .r-grid.three .r-cell{padding:14px 8px}
 .r-grid.three .v{font-size:16px}
 .r-grid.three .k{font-size:9px;letter-spacing:.1em}
+.r-grid.rates{grid-template-columns:1fr 1fr}
+.r-grid.rates .r-cell{padding:14px 8px}
+.r-grid.rates .v{font-size:16px}
+.r-grid.rates .k{font-size:9px;letter-spacing:.1em}
 
 /* buttons */
 .btn{

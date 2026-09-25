@@ -513,6 +513,11 @@ function calc() {
   $("rPerDistLabel").textContent = "Per " + distUnit();
   $("rPerDist").textContent = addedDisp > 0 ? round1(cost / addedDisp * 100) + cur().minor + "/" + distUnit() : "—";
 
+  // Charge-rate readouts: range and battery % gained per hour of charging.
+  var hours = mins / 60;
+  $("rRangeRate").textContent = (hours > 0 && addedDisp > 0) ? round1(addedDisp / hours) + " " + distUnit() : "— " + distUnit();
+  $("rPctRate").textContent = (hours > 0 && tgt > now) ? round1((tgt - now) / hours) + "%" : "— %";
+
   renderCompare();
 }
 
@@ -1677,8 +1682,11 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.14.2";
+var VERSION = "1.15.0";
 var CHANGELOG = [
+  { v: "1.15.0", date: "2026-09-25", notes: [
+    "Result now shows charge rate: range added per hour and battery % per hour"
+  ] },
   { v: "1.14.2", date: "2026-09-25", notes: [
     "Support low-power chargers: charger speed now accepts decimals (e.g. a 1.2 kW granny lead), and the speed slider starts at 1 kW instead of 3 kW"
   ] },
