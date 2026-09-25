@@ -436,16 +436,22 @@ function updateSpeedRange() {
   if (+sp.value > maxSpeed) sp.value = maxSpeed;
   var m1 = Math.round(maxSpeed / 3), m2 = Math.round(maxSpeed * 2 / 3);
   $("speedScale").innerHTML =
-    "<span>3</span><span>" + m1 + "</span><span>" + m2 + "</span><span>" + maxSpeed + " kW</span>";
+    "<span>" + sp.min + "</span><span>" + m1 + "</span><span>" + m2 + "</span><span>" + maxSpeed + " kW</span>";
 }
 
 /* The charger the main screen is currently estimating with: a saved charger's
    type/phase when one is selected, otherwise inferred from the speed slider. kw
    always tracks the (car-capped) speed slider. */
 function currentCharger() {
-  var kw = +$("speed").value;
+  // A selected saved charger uses its exact stored kW (so low-power chargers like
+  // a 1.2 kW granny lead aren't lost to the slider's rounding); a custom/dragged
+  // charger uses the slider value and infers its type from the power.
   var c = chargers.find(function (x) { return x.id === activeChargerId; });
-  if (c) return { id: c.id, kw: kw, type: c.type, phase: c.phase || "single" };
+  if (c) {
+    var cap = +$("speed").max;                       // the car's max charge rate
+    return { id: c.id, kw: Math.min(c.kw, cap), type: c.type, phase: c.phase || "single" };
+  }
+  var kw = +$("speed").value;
   return { id: null, kw: kw, type: inferType(kw), phase: "single" };
 }
 
@@ -460,7 +466,6 @@ function calc() {
   var now = +$("now").value;
   var tgt = +$("tgt").value;
   var price = +$("price").value;
-  var speed = +$("speed").value;
   if (tgt < now) { tgt = now; $("tgt").value = now; }
 
   var charger = currentCharger();
@@ -477,7 +482,7 @@ function calc() {
 
   $("vNow").innerHTML = now + "% <small>· " + Math.round(toDisp(milesFor(car, now))) + " " + distUnit() + "</small>";
   $("vTgt").innerHTML = tgt + "% <small>· " + Math.round(toDisp(milesFor(car, tgt))) + " " + distUnit() + "</small>";
-  $("vSpeed").textContent = speed + " kW";
+  $("vSpeed").textContent = round1(charger.kw) + " kW";
   $("vPrice").textContent = price + cur().minor + " /kWh";
   var ct = $("chargerType");
   if (ct) {
@@ -1672,8 +1677,11 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.14.1";
+var VERSION = "1.14.2";
 var CHANGELOG = [
+  { v: "1.14.2", date: "2026-09-25", notes: [
+    "Support low-power chargers: charger speed now accepts decimals (e.g. a 1.2 kW granny lead), and the speed slider starts at 1 kW instead of 3 kW"
+  ] },
   { v: "1.14.1", date: "2026-09-24", notes: [
     "Fixed the update/status pill not dismissing — “you’re up to date” and the dismiss button now clear it properly"
   ] },
