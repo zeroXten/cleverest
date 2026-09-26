@@ -1075,18 +1075,42 @@ $("deleteCar").addEventListener("click", function () {
 var editingChargerId = null;
 var chgDraftType = "AC";       // AC | DC in the open editor
 var chgDraftPhase = "single";  // single | three
+var chgDraftBy = "kw";         // kw | amps — how an AC charger's speed is entered
+var chgDraftVolts = 230;       // 230 | 120 — per-phase supply voltage for amps -> kW
 var chgTypeManual = false;     // has the user overridden the auto AC/DC choice?
 
-/* Reflect the draft type/phase into the segmented controls, and only show the
-   AC-phase picker for AC chargers. */
+function setChgSeg(id, val) {
+  Array.prototype.forEach.call($(id).children, function (b) {
+    b.classList.toggle("on", b.getAttribute("data-v") === val);
+  });
+}
+
+/* kW implied by the amps slider: P = (three-phase ? 3 : 1) x volts x amps. */
+function ampsToKw() {
+  var a = +$("cAmps").value;
+  var mult = (chgDraftPhase === "three") ? 3 : 1;
+  return round1(mult * chgDraftVolts * a / 1000);
+}
+function updateAmpsReadout() {
+  $("cAmpsVal").textContent = (+$("cAmps").value) + " A";
+  $("cAmpsKw").textContent = "≈ " + ampsToKw() + " kW";
+}
+
+/* Reflect the draft state into the segmented controls and show only the relevant
+   inputs: phase + kW/amps switch for AC, and either the kW field or the amps
+   slider + voltage picker. */
 function renderChgTypeSeg() {
-  Array.prototype.forEach.call($("segChgType").children, function (b) {
-    b.classList.toggle("on", b.getAttribute("data-v") === chgDraftType);
-  });
-  Array.prototype.forEach.call($("segChgPhase").children, function (b) {
-    b.classList.toggle("on", b.getAttribute("data-v") === chgDraftPhase);
-  });
-  $("chgPhaseField").hidden = chgDraftType !== "AC";
+  setChgSeg("segChgType", chgDraftType);
+  setChgSeg("segChgPhase", chgDraftPhase);
+  setChgSeg("segChgBy", chgDraftBy);
+  setChgSeg("segChgVolts", String(chgDraftVolts));
+  var isAC = chgDraftType === "AC";
+  var ampsMode = isAC && chgDraftBy === "amps";
+  $("chgPhaseField").hidden = !isAC;
+  $("chgByField").hidden = !isAC;
+  $("chgAmpsField").hidden = !ampsMode;
+  $("chgKwField").hidden = ampsMode;
+  if (ampsMode) updateAmpsReadout();
 }
 
 /* Selection chips on the main screen (configuration lives on the Chargers page). */
@@ -1139,7 +1163,7 @@ function renderChargerList() {
     meta.style.cssText = "background:none;border:none;padding:0;text-align:left;cursor:pointer;color:inherit;font:inherit;min-width:0";
     meta.innerHTML = '<p class="nm"></p><p class="mt"></p>';
     meta.querySelector(".nm").textContent = c.name;
-    meta.querySelector(".mt").textContent = c.kw + " kW · " + typeLabel(c) + " · " + c.price + cur().minor + "/kWh";
+    meta.querySelector(".mt").textContent = round1(c.kw) + " kW" + (c.amps > 0 ? " (" + c.amps + " A)" : "") + " · " + typeLabel(c) + " · " + c.price + cur().minor + "/kWh";
     meta.addEventListener("click", function () { openChgEdit(c.id); });
 
     var right = document.createElement("div");
@@ -1170,6 +1194,9 @@ function openChgEdit(id) {
   $("cPriceUnit").textContent = cur().minor + "/kWh";
   chgDraftType = (c.type === "DC") ? "DC" : "AC";
   chgDraftPhase = (c.phase === "three") ? "three" : "single";
+  chgDraftVolts = (c.volts === 120) ? 120 : 230;
+  chgDraftBy = (c.amps > 0) ? "amps" : "kw";
+  $("cAmps").value = (c.amps > 0) ? c.amps : 10;
   chgTypeManual = true; // an existing charger already has an explicit type
   renderChgTypeSeg();
   $("chgDelete").hidden = false;
@@ -1183,7 +1210,8 @@ function openChgAdd() {
   $("chgEditTitle").textContent = "Add a charger";
   $("cName").value = ""; $("cSpeed").value = ""; $("cPrice").value = "";
   $("cPriceUnit").textContent = cur().minor + "/kWh";
-  chgDraftType = "AC"; chgDraftPhase = "single"; chgTypeManual = false;
+  chgDraftType = "AC"; chgDraftPhase = "single"; chgDraftBy = "kw"; chgDraftVolts = 230; chgTypeManual = false;
+  $("cAmps").value = 10;
   renderChgTypeSeg();
   $("chgDelete").hidden = true;
   $("chgErr").hidden = true;
@@ -1204,8 +1232,33 @@ $("segChgType").addEventListener("click", function (e) {
 $("segChgPhase").addEventListener("click", function (e) {
   var b = e.target.closest("button[data-v]"); if (!b) return;
   chgDraftPhase = b.getAttribute("data-v");
+  renderChgTypeSeg();   // phase changes the amps -> kW figure
+});
+$("segChgBy").addEventListener("click", function (e) {
+  var b = e.target.closest("button[data-v]"); if (!b) return;
+  var mode = b.getAttribute("data-v");
+  if (mode === chgDraftBy) return;
+  if (mode === "amps") {
+    // carry a typed kW over to the slider so nothing jumps
+    var kw = parseFloat($("cSpeed").value);
+    if (kw > 0) {
+      var mult = (chgDraftPhase === "three") ? 3 : 1;
+      var a = Math.round(kw * 1000 / (mult * chgDraftVolts));
+      $("cAmps").value = Math.max(6, Math.min(32, a));
+    }
+  } else {
+    $("cSpeed").value = ampsToKw();   // carry the amps figure back to the kW field
+  }
+  chgDraftBy = mode;
   renderChgTypeSeg();
 });
+$("segChgVolts").addEventListener("click", function (e) {
+  var b = e.target.closest("button[data-v]"); if (!b) return;
+  chgDraftVolts = parseInt(b.getAttribute("data-v"), 10);
+  renderChgTypeSeg();
+});
+$("cAmps").addEventListener("input", updateAmpsReadout);
+addSettleGuard($("cAmps"), updateAmpsReadout);
 /* While the user hasn't overridden it, keep the type in step with the power. */
 $("cSpeed").addEventListener("input", function () {
   if (chgTypeManual) return;
@@ -1219,18 +1272,25 @@ function chgShowErr(m) { var e = $("chgErr"); e.textContent = m; e.hidden = fals
 $("chgEditCard").addEventListener("submit", function (e) {
   e.preventDefault();
   var name = $("cName").value.trim();
-  var kw = parseFloat($("cSpeed").value);
   var price = parseFloat($("cPrice").value);
+  var phase = chgDraftType === "AC" ? chgDraftPhase : "single";
+  var kw, amps = null, volts = null;
+  if (chgDraftType === "AC" && chgDraftBy === "amps") {
+    amps = +$("cAmps").value;
+    volts = chgDraftVolts;
+    kw = ampsToKw();
+  } else {
+    kw = parseFloat($("cSpeed").value);
+  }
   if (!name) return chgShowErr("Give the charger a name.");
   if (!(kw > 0)) return chgShowErr("Enter the charge speed in kW.");
   if (!(price >= 0)) return chgShowErr("Enter the price in p/kWh (0 for free).");
 
-  var phase = chgDraftType === "AC" ? chgDraftPhase : "single";
   if (editingChargerId) {
     var c = chargers.find(function (x) { return x.id === editingChargerId; });
-    c.name = name; c.kw = kw; c.price = price; c.type = chgDraftType; c.phase = phase;
+    c.name = name; c.kw = kw; c.price = price; c.type = chgDraftType; c.phase = phase; c.amps = amps; c.volts = volts;
   } else {
-    chargers.push({ id: "chg-" + Date.now().toString(36), name: name, kw: kw, price: price, type: chgDraftType, phase: phase });
+    chargers.push({ id: "chg-" + Date.now().toString(36), name: name, kw: kw, price: price, type: chgDraftType, phase: phase, amps: amps, volts: volts });
   }
   save(CHARGERS_KEY, chargers);
   $("chgEditCard").hidden = true;
@@ -1682,8 +1742,11 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.15.0";
+var VERSION = "1.16.0";
 var CHANGELOG = [
+  { v: "1.16.0", date: "2026-09-26", notes: [
+    "Set an AC charger by its amps (handy for granny chargers) — pick the current on a slider and 230 V or 120 V, and the kW is worked out for you; switch back to kW entry anytime"
+  ] },
   { v: "1.15.0", date: "2026-09-25", notes: [
     "Result now shows charge rate: range added per hour and battery % per hour"
   ] },

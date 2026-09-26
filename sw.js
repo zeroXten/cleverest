@@ -13,7 +13,7 @@
    the user acts, posts SKIP_WAITING so the new worker activates and the page
    reloads once. Bump the version in CACHE on every release so the byte-changed
    worker is detected and the prompt appears. */
-var CACHE = "cleverest-1.15.0";
+var CACHE = "cleverest-1.16.0";
 var ASSETS = [
   "./",
   "index.html",

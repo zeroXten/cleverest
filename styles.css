@@ -331,3 +331,8 @@ input[type=range]:focus-visible{box-shadow:0 0 0 3px rgba(46,197,255,.35)}
 .update-pill.toast{padding:9px 16px}
 .update-pill.toast .update-apply,.update-pill.toast .update-x{display:none}
 @keyframes pill-in{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}
+
+/* charger amps -> kW row */
+.volt-row{display:flex;align-items:center;gap:12px;margin-top:12px}
+.volt-row .seg{flex:1}
+.amps-kw{font-family:var(--font-mono);font-size:15px;font-weight:600;color:var(--c4);white-space:nowrap}

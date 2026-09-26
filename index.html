@@ -218,16 +218,12 @@
           <input type="text" id="cName" placeholder="St Albans Morrisons" autocomplete="off">
         </div>
         <div class="field">
-          <div class="flabel"><span class="name">Charge speed</span></div>
-          <div class="unit"><input type="number" id="cSpeed" min="0.1" step="any" inputmode="decimal" placeholder="50"><span class="u">kW</span></div>
-        </div>
-        <div class="field">
           <div class="flabel"><span class="name">Type</span></div>
           <div class="seg" id="segChgType" role="group" aria-label="Charger type">
             <button type="button" data-v="AC">AC</button>
             <button type="button" data-v="DC">DC rapid</button>
           </div>
-          <p class="help">Auto-set from the speed (over 22 kW is DC) — override for the rare low-power DC unit.</p>
+          <p class="help">Auto-set from the power (over 22 kW is DC) — override for the rare low-power DC unit.</p>
         </div>
         <div class="field" id="chgPhaseField">
           <div class="flabel"><span class="name">AC supply</span></div>
@@ -236,6 +232,30 @@
             <button type="button" data-v="three">Three-phase</button>
           </div>
           <p class="help">Most UK home chargers are single-phase.</p>
+        </div>
+        <div class="field" id="chgByField">
+          <div class="flabel"><span class="name">Set speed by</span></div>
+          <div class="seg" id="segChgBy" role="group" aria-label="Set charge speed by">
+            <button type="button" data-v="kw">kW</button>
+            <button type="button" data-v="amps">Amps</button>
+          </div>
+        </div>
+        <div class="field" id="chgKwField">
+          <div class="flabel"><span class="name">Charge speed</span></div>
+          <div class="unit"><input type="number" id="cSpeed" min="0.1" step="any" inputmode="decimal" placeholder="50"><span class="u">kW</span></div>
+        </div>
+        <div class="field" id="chgAmpsField" hidden>
+          <div class="flabel"><span class="name">Current</span><span class="val cyan" id="cAmpsVal">10 A</span></div>
+          <input type="range" id="cAmps" min="6" max="32" value="10" step="1" aria-label="Charging current (amps)">
+          <div class="scale"><span>6</span><span>16</span><span>32 A</span></div>
+          <div class="volt-row">
+            <div class="seg" id="segChgVolts" role="group" aria-label="Supply voltage">
+              <button type="button" data-v="230">230 V</button>
+              <button type="button" data-v="120">120 V</button>
+            </div>
+            <span class="amps-kw" id="cAmpsKw">≈ 2.3 kW</span>
+          </div>
+          <p class="help">Worked out from the current, phase and voltage.</p>
         </div>
         <div class="field">
           <div class="flabel"><span class="name">Price</span></div>
