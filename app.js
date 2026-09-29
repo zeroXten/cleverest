@@ -1560,6 +1560,21 @@ function setSfTimeScale(maxMin) {
   $("sfTime").max = maxMin;
   $("sfTimeScale").innerHTML = "<span>0</span><span>" + fmtTime(Math.round(maxMin / 2)) + "</span><span>" + fmtTime(maxMin) + "</span>";
 }
+/* A "time taken" slider ceiling that comfortably fits an estimate — at least 8h,
+   ~1.5x the estimate (whole hours), capped at 10 days. Lets slow granny charges
+   (an SUV on 6A can take 2+ days) be logged without hitting an 8h wall. */
+function sfTimeMax(estMins) {
+  if (!(estMins > 0)) return 480;
+  return Math.max(480, Math.min(Math.ceil((estMins * 1.5) / 60) * 60, 240 * 60));
+}
+/* Resize the time slider to a new ceiling, keeping the current value (clamped). */
+function resizeSfTime(maxMin) {
+  if (+$("sfTime").max === maxMin) return;
+  var v = +$("sfTime").value;
+  setSfTimeScale(maxMin);
+  $("sfTime").value = Math.min(v, maxMin);
+  $("sfTimeVal").textContent = fmtTime(+$("sfTime").value);
+}
 
 /* Show only the fields relevant to the mode, and refresh readouts + estimate. */
 function updateSfForm() {
@@ -1603,6 +1618,7 @@ function updateSfForm() {
       var kwh = car.battery * (to - from) / 100;
       var cost = kwh * ((chg.price || 0)) / 100 * costCorrection(chg.id);
       est.textContent = "App estimate for this: " + fmtTime(mins) + " · " + money(cost);
+      resizeSfTime(sfTimeMax(mins));   // keep the time slider big enough for the scenario (e.g. slow granny charges)
     }
   }
 }
@@ -1626,9 +1642,14 @@ function openSf(mode) {
     $("sfFrom").value = +$("now").value;
     $("sfTo").value = +$("tgt").value;
     if (mode === "log") {
-      setSfTimeScale(480);
-      $("sfTime").value = 35;
       $("sfCost").value = ""; $("sfKwh").value = ""; $("sfTemp").value = "";
+      // default the time to the app's estimate for this scenario, with a fitting ceiling
+      var lc = sfCarChg(), lf = +$("sfFrom").value, lt = +$("sfTo").value;
+      var estMins = (lc.chg && lt > lf)
+        ? estimateMinutes(lc.car, lf, lt, { id: lc.chg.id, kw: lc.chg.kw, type: lc.chg.type, phase: lc.chg.phase || "single" }, sfTempVal())
+        : 35;
+      setSfTimeScale(sfTimeMax(estMins));   // set max before value (browser clamps value to max)
+      $("sfTime").value = Math.min(Math.round(estMins), +$("sfTime").max);
     }
   }
   $("sessionForm").hidden = false;
@@ -1881,8 +1902,11 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.19.2";
+var VERSION = "1.19.3";
 var CHANGELOG = [
+  { v: "1.19.3", date: "2026-09-29", notes: [
+    "Logging a session no longer caps “time taken” at 8 hours — the slider now stretches to fit slow charges (a granny charger on a big SUV can take days), and defaults to the app's estimate"
+  ] },
   { v: "1.19.2", date: "2026-09-29", notes: [
     "Consistency pass: the Save buttons on the car, charger and session forms now match; tidied some internal styling"
   ] },
