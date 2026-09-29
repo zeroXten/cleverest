@@ -1530,7 +1530,8 @@ function renderLive() {
 }
 
 /* ---------- one session form: start / log / finish ---------- */
-var sfMode = "log";   // "start" | "log" | "finish"
+var sfMode = "log";        // "start" | "log" | "finish"
+var sfTimeTouched = false; // has the user set the time themselves? (else it tracks the estimate)
 
 function sfErr(m) { var e = $("sfErr"); e.textContent = m; e.hidden = false; }
 function sfTempVal() { var v = $("sfTemp").value.trim(); if (v === "") return null; var n = parseFloat(v); return isNaN(n) ? null : n; }
@@ -1566,14 +1567,6 @@ function setSfTimeScale(maxMin) {
 function sfTimeMax(estMins) {
   if (!(estMins > 0)) return 480;
   return Math.max(480, Math.min(Math.ceil((estMins * 1.5) / 60) * 60, 240 * 60));
-}
-/* Resize the time slider to a new ceiling, keeping the current value (clamped). */
-function resizeSfTime(maxMin) {
-  if (+$("sfTime").max === maxMin) return;
-  var v = +$("sfTime").value;
-  setSfTimeScale(maxMin);
-  $("sfTime").value = Math.min(v, maxMin);
-  $("sfTimeVal").textContent = fmtTime(+$("sfTime").value);
 }
 
 /* Show only the fields relevant to the mode, and refresh readouts + estimate. */
@@ -1618,13 +1611,19 @@ function updateSfForm() {
       var kwh = car.battery * (to - from) / 100;
       var cost = kwh * ((chg.price || 0)) / 100 * costCorrection(chg.id);
       est.textContent = "App estimate for this: " + fmtTime(mins) + " · " + money(cost);
-      resizeSfTime(sfTimeMax(mins));   // keep the time slider big enough for the scenario (e.g. slow granny charges)
+      // Size the slider to the scenario, and — until the user sets the time
+      // themselves — keep the value on the estimate so it tracks car/charger/levels.
+      var mx = sfTimeMax(mins);
+      if (+$("sfTime").max !== mx) setSfTimeScale(mx);
+      $("sfTime").value = sfTimeTouched ? Math.min(+$("sfTime").value, mx) : Math.min(Math.round(mins), mx);
+      $("sfTimeVal").textContent = fmtTime(+$("sfTime").value);
     }
   }
 }
 
 function openSf(mode) {
   sfMode = mode;
+  sfTimeTouched = false;
   $("sfErr").hidden = true;
   if (mode === "finish") {
     if (!live) return;
@@ -1643,13 +1642,7 @@ function openSf(mode) {
     $("sfTo").value = +$("tgt").value;
     if (mode === "log") {
       $("sfCost").value = ""; $("sfKwh").value = ""; $("sfTemp").value = "";
-      // default the time to the app's estimate for this scenario, with a fitting ceiling
-      var lc = sfCarChg(), lf = +$("sfFrom").value, lt = +$("sfTo").value;
-      var estMins = (lc.chg && lt > lf)
-        ? estimateMinutes(lc.car, lf, lt, { id: lc.chg.id, kw: lc.chg.kw, type: lc.chg.type, phase: lc.chg.phase || "single" }, sfTempVal())
-        : 35;
-      setSfTimeScale(sfTimeMax(estMins));   // set max before value (browser clamps value to max)
-      $("sfTime").value = Math.min(Math.round(estMins), +$("sfTime").max);
+      // time value + ceiling are set by updateSfForm() (tracks the estimate until edited)
     }
   }
   $("sessionForm").hidden = false;
@@ -1674,9 +1667,13 @@ $("startSessionBtn").addEventListener("click", function () {
 $("addSessionBtn").addEventListener("click", openLog);
 $("endSessionBtn").addEventListener("click", openFinish);
 $("sfCancel").addEventListener("click", closeSf);
-["sfFrom", "sfTo", "sfTime"].forEach(function (id) { $(id).addEventListener("input", updateSfForm); addSettleGuard($(id), updateSfForm); });
+["sfFrom", "sfTo"].forEach(function (id) { $(id).addEventListener("input", updateSfForm); addSettleGuard($(id), updateSfForm); });
 ["sfCar", "sfCharger"].forEach(function (id) { $(id).addEventListener("change", updateSfForm); });
 $("sfTemp").addEventListener("input", updateSfForm);
+/* Dragging the time slider means the user is setting it — stop tracking the estimate. */
+function sfTimeInput() { sfTimeTouched = true; updateSfForm(); }
+$("sfTime").addEventListener("input", sfTimeInput);
+addSettleGuard($("sfTime"), sfTimeInput);
 
 /* Discard needs a deliberate second tap (native confirm is unreliable in the PWA). */
 var discardArmed = false, discardTimer = null;
@@ -1902,8 +1899,11 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.19.3";
+var VERSION = "1.19.4";
 var CHANGELOG = [
+  { v: "1.19.4", date: "2026-09-29", notes: [
+    "When logging, “time taken” now starts at the app's estimate and follows the car/charger/levels you pick, until you set it yourself — instead of sitting at a low default"
+  ] },
   { v: "1.19.3", date: "2026-09-29", notes: [
     "Logging a session no longer caps “time taken” at 8 hours — the slider now stretches to fit slow charges (a granny charger on a big SUV can take days), and defaults to the app's estimate"
   ] },
