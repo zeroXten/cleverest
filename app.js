@@ -1883,8 +1883,12 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.19.0";
+var VERSION = "1.19.1";
 var CHANGELOG = [
+  { v: "1.19.1", date: "2026-09-29", notes: [
+    "Removed the fiddly number spinners from cost/energy/temperature fields, and they now accept any number of decimals",
+    "More space below the session card"
+  ] },
   { v: "1.19.0", date: "2026-09-29", notes: [
     "Starting, logging and finishing a charge now use one consistent form (shown in the right mode for each), instead of three different-looking screens"
   ] },

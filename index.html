@@ -328,16 +328,16 @@
         <div class="row2" id="sfActualsRow">
           <div class="field">
             <div class="flabel"><span class="name">Cost <span class="opt">(opt)</span></span></div>
-            <div class="unit"><input type="number" id="sfCost" min="0" step="0.01" inputmode="decimal" placeholder=""><span class="u" id="sfCostUnit">£</span></div>
+            <div class="unit"><input type="number" id="sfCost" min="0" step="any" inputmode="decimal" placeholder=""><span class="u" id="sfCostUnit">£</span></div>
           </div>
           <div class="field">
             <div class="flabel"><span class="name">Energy <span class="opt">(opt)</span></span></div>
-            <div class="unit"><input type="number" id="sfKwh" min="0" step="0.01" inputmode="decimal" placeholder="9.4"><span class="u">kWh</span></div>
+            <div class="unit"><input type="number" id="sfKwh" min="0" step="any" inputmode="decimal" placeholder="9.4"><span class="u">kWh</span></div>
           </div>
         </div>
         <div class="field" id="sfTempField">
           <div class="flabel"><span class="name">Temperature <span class="opt">(optional)</span></span></div>
-          <div class="unit"><input type="number" id="sfTemp" step="1" inputmode="numeric" placeholder="12"><span class="u">°C</span></div>
+          <div class="unit"><input type="number" id="sfTemp" step="any" inputmode="decimal" placeholder="12"><span class="u">°C</span></div>
           <p class="help">Cold slows rapid (DC) charging — the app learns how much.</p>
         </div>
         <p class="sess-est" id="sfEst"></p>
