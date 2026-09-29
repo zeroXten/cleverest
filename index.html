@@ -282,34 +282,7 @@
         </button>
       </div>
 
-      <!-- live session: start card / in-progress / finish -->
-      <form class="edit-card" id="startCard" hidden>
-        <p class="divider">Start a session</p>
-        <div class="field">
-          <div class="flabel"><span class="name">Car</span></div>
-          <select id="stCar" class="sel"></select>
-        </div>
-        <div class="field">
-          <div class="flabel"><span class="name">Charger</span></div>
-          <select id="stCharger" class="sel"></select>
-          <p class="help" id="stChargerNote"></p>
-        </div>
-        <div class="field">
-          <div class="flabel"><span class="name">Battery now</span><span class="val pink" id="stFromVal">20%</span></div>
-          <input type="range" id="stFrom" min="0" max="100" value="20" step="1" aria-label="Current battery %">
-        </div>
-        <div class="field">
-          <div class="flabel"><span class="name">Charge to</span><span class="val cyan" id="stToVal">80%</span></div>
-          <input type="range" id="stTo" min="0" max="100" value="80" step="1" aria-label="Target battery %">
-        </div>
-        <p class="sess-est" id="stEst"></p>
-        <p class="form-err" id="stErr" hidden></p>
-        <button type="submit" class="btn compact">Start charging</button>
-        <div class="edit-actions">
-          <button type="button" class="linkbtn" id="stCancel">Cancel</button>
-        </div>
-      </form>
-
+      <!-- live session: in-progress status card -->
       <div class="live-panel" id="livePanel" hidden>
         <div class="live-head">
           <span class="live-dot" aria-hidden="true"></span>
@@ -325,33 +298,53 @@
         </div>
       </div>
 
-      <form class="edit-card" id="liveEndCard" hidden>
-        <p class="divider">Finish session</p>
-        <p class="help" id="leContext"></p>
-        <div class="field">
-          <div class="flabel"><span class="name">Ended at</span><span class="val cyan" id="leEndPctVal">80%</span></div>
-          <input type="range" id="leEndPct" min="0" max="100" value="80" step="1" aria-label="Battery % reached">
+      <!-- one session form, shown in three modes: start / log / finish -->
+      <form class="edit-card" id="sessionForm" hidden>
+        <p class="divider" id="sfTitle">Log a session</p>
+        <p class="help" id="sfSummary" hidden></p>
+        <div class="field" id="sfCarField">
+          <div class="flabel"><span class="name">Car</span></div>
+          <select id="sfCar" class="sel"></select>
+        </div>
+        <div class="field" id="sfChgField">
+          <div class="flabel"><span class="name">Charger</span></div>
+          <select id="sfCharger" class="sel"></select>
+          <p class="help" id="sfChgNote"></p>
+        </div>
+        <div class="field" id="sfFromField">
+          <div class="flabel"><span class="name">Battery now</span><span class="val pink" id="sfFromVal">20%</span></div>
+          <input type="range" id="sfFrom" min="0" max="100" value="20" step="1" aria-label="Start battery %">
         </div>
         <div class="field">
-          <div class="flabel"><span class="name">Time taken</span><span class="val violet" id="leTimeVal">1h</span></div>
-          <input type="range" id="leTime" min="0" max="480" value="60" step="1" aria-label="Time taken">
-          <div class="scale" id="leTimeScale"><span>0</span><span>4h</span><span>8h</span></div>
-          <p class="help">Filled in from the clock — adjust if you unplugged earlier.</p>
+          <div class="flabel"><span class="name" id="sfToLabel">Charge to</span><span class="val cyan" id="sfToVal">80%</span></div>
+          <input type="range" id="sfTo" min="0" max="100" value="80" step="1" aria-label="Finish battery %">
         </div>
-        <div class="row2">
-          <div class="field">
-            <div class="flabel"><span class="name">Energy <span class="opt">(opt)</span></span></div>
-            <div class="unit"><input type="number" id="leKwh" min="0" step="0.01" inputmode="decimal" placeholder="9.4"><span class="u">kWh</span></div>
-          </div>
+        <div class="field" id="sfTimeField">
+          <div class="flabel"><span class="name">Time taken</span><span class="val violet" id="sfTimeVal">35 min</span></div>
+          <input type="range" id="sfTime" min="0" max="480" value="35" step="1" aria-label="Time taken">
+          <div class="scale" id="sfTimeScale"><span>0</span><span>4h</span><span>8h</span></div>
+          <p class="help" id="sfTimeNote">Filled in from the clock — adjust if you unplugged earlier.</p>
+        </div>
+        <div class="row2" id="sfActualsRow">
           <div class="field">
             <div class="flabel"><span class="name">Cost <span class="opt">(opt)</span></span></div>
-            <div class="unit"><input type="number" id="leCost" min="0" step="0.01" inputmode="decimal" placeholder=""><span class="u" id="leCostUnit">£</span></div>
+            <div class="unit"><input type="number" id="sfCost" min="0" step="0.01" inputmode="decimal" placeholder=""><span class="u" id="sfCostUnit">£</span></div>
+          </div>
+          <div class="field">
+            <div class="flabel"><span class="name">Energy <span class="opt">(opt)</span></span></div>
+            <div class="unit"><input type="number" id="sfKwh" min="0" step="0.01" inputmode="decimal" placeholder="9.4"><span class="u">kWh</span></div>
           </div>
         </div>
-        <p class="form-err" id="leErr" hidden></p>
-        <button type="submit" class="btn">Save session</button>
+        <div class="field" id="sfTempField">
+          <div class="flabel"><span class="name">Temperature <span class="opt">(optional)</span></span></div>
+          <div class="unit"><input type="number" id="sfTemp" step="1" inputmode="numeric" placeholder="12"><span class="u">°C</span></div>
+          <p class="help">Cold slows rapid (DC) charging — the app learns how much.</p>
+        </div>
+        <p class="sess-est" id="sfEst"></p>
+        <p class="form-err" id="sfErr" hidden></p>
+        <button type="submit" class="btn compact" id="sfSubmit">Save session</button>
         <div class="edit-actions">
-          <button type="button" class="linkbtn" id="leCancel">Back</button>
+          <button type="button" class="linkbtn" id="sfCancel">Cancel</button>
         </div>
       </form>
 
@@ -360,54 +353,6 @@
       <div class="cal-summary" id="calSummary"></div>
 
       <button class="btn ghost add" id="addSessionBtn">+ Log a session</button>
-
-      <form class="edit-card" id="sessEditCard" hidden>
-        <p class="divider">Log a session</p>
-        <div class="field">
-          <div class="flabel"><span class="name">Car</span></div>
-          <select id="sCar" class="sel"></select>
-        </div>
-        <div class="field">
-          <div class="flabel"><span class="name">Charger</span></div>
-          <select id="sCharger" class="sel"></select>
-          <p class="help" id="sChargerNote"></p>
-        </div>
-        <div class="field">
-          <div class="flabel"><span class="name">From</span><span class="val pink" id="sFromVal">20%</span></div>
-          <input type="range" id="sFrom" min="0" max="100" value="20" step="1" aria-label="Start battery %">
-        </div>
-        <div class="field">
-          <div class="flabel"><span class="name">To</span><span class="val cyan" id="sToVal">80%</span></div>
-          <input type="range" id="sTo" min="0" max="100" value="80" step="1" aria-label="Finish battery %">
-        </div>
-        <div class="field">
-          <div class="flabel"><span class="name">Actual time</span><span class="val violet" id="sMinsVal">35 min</span></div>
-          <input type="range" id="sMins" min="0" max="480" value="35" step="1" aria-label="Actual time (minutes)">
-          <div class="scale"><span>0</span><span>2h</span><span>4h</span><span>8h</span></div>
-        </div>
-        <div class="row2">
-          <div class="field">
-            <div class="flabel"><span class="name">Actual cost <span class="opt">(opt)</span></span></div>
-            <div class="unit"><input type="number" id="sCost" min="0" step="0.01" inputmode="decimal" placeholder="12.50"><span class="u" id="sCostUnit">£</span></div>
-          </div>
-          <div class="field">
-            <div class="flabel"><span class="name">Energy <span class="opt">(opt)</span></span></div>
-            <div class="unit"><input type="number" id="sKwh" min="0" step="0.01" inputmode="decimal" placeholder="9.39"><span class="u">kWh</span></div>
-          </div>
-        </div>
-        <p class="help" id="sKwhNote">From the charger receipt if shown — lets the app learn the real price per kWh.</p>
-        <div class="field">
-          <div class="flabel"><span class="name">Temperature <span class="opt">(optional)</span></span></div>
-          <div class="unit"><input type="number" id="sTemp" step="1" inputmode="numeric" placeholder="12"><span class="u">°C</span></div>
-          <p class="help">Ambient temperature during the charge. Cold slows DC (rapid) charging — the app learns how much.</p>
-        </div>
-        <p class="sess-est" id="sessEst"></p>
-        <p class="form-err" id="sessErr" hidden></p>
-        <button type="submit" class="btn">Save session</button>
-        <div class="edit-actions">
-          <button type="button" class="linkbtn" id="sessCancel">Cancel</button>
-        </div>
-      </form>
 
       <div id="sessionList"></div>
     </main>
