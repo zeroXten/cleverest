@@ -1937,8 +1937,11 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.18.0";
+var VERSION = "1.18.1";
 var CHANGELOG = [
+  { v: "1.18.1", date: "2026-09-29", notes: [
+    "The Start-a-session setup now matches the calculator's look, with a standalone Start button"
+  ] },
   { v: "1.18.0", date: "2026-09-29", notes: [
     "“Start charging session” now takes you to the Sessions screen with your car, charger and battery levels carried over — tweak if needed, then tap Start; end it there when you're done",
     "Brighter Start button"

@@ -350,3 +350,8 @@ input[type=range]:focus-visible{box-shadow:0 0 0 3px rgba(46,197,255,.35)}
 .live-actions{display:flex;align-items:center;gap:14px;margin-top:16px}
 .live-actions .btn{margin-top:0;flex:1}
 .live-actions .linkbtn{flex:none}
+
+/* start-a-session setup: inline (no card box) so it mirrors the calculator and
+   its Start button is a standalone CTA like the main screen's */
+.setup-card{margin-top:16px}
+.setup-card .edit-actions{justify-content:center}
