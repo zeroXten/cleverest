@@ -1557,16 +1557,23 @@ function sfCarChg() {
 }
 function sfFromPct() { return (sfMode === "finish" && live) ? live.fromPct : +$("sfFrom").value; }
 
-function setSfTimeScale(maxMin) {
-  $("sfTime").max = maxMin;
-  $("sfTimeScale").innerHTML = "<span>0</span><span>" + fmtTime(Math.round(maxMin / 2)) + "</span><span>" + fmtTime(maxMin) + "</span>";
+/* Set the "time taken" slider's min/max and scale labels. */
+function setSfTimeRange(minMin, maxMin) {
+  var sl = $("sfTime");
+  sl.min = minMin; sl.max = maxMin;
+  var mid = Math.round((minMin + maxMin) / 2);
+  $("sfTimeScale").innerHTML = "<span>" + fmtTime(minMin) + "</span><span>" + fmtTime(mid) + "</span><span>" + fmtTime(maxMin) + "</span>";
 }
-/* A "time taken" slider ceiling that comfortably fits an estimate — at least 8h,
-   ~1.5x the estimate (whole hours), capped at 10 days. Lets slow granny charges
-   (an SUV on 6A can take 2+ days) be logged without hitting an 8h wall. */
-function sfTimeMax(estMins) {
-  if (!(estMins > 0)) return 480;
-  return Math.max(480, Math.min(Math.ceil((estMins * 1.5) / 60) * 60, 240 * 60));
+/* A sensible slider range bracketing an estimate (~half to ~1.5x, rounded to a
+   step that suits the magnitude, capped at 10 days) — so the floor isn't a
+   nonsensical 0 and the estimate sits mid-slider for easy adjustment. */
+function sfTimeBounds(estMins) {
+  var e = Math.max(1, Math.round(estMins));
+  var step = e >= 120 ? 60 : (e >= 60 ? 30 : 10);
+  var min = Math.max(0, Math.floor(e * 0.5 / step) * step);
+  var max = Math.min(Math.ceil(e * 1.5 / step) * step, 240 * 60);
+  if (max <= min) max = min + step;
+  return { min: min, max: max };
 }
 
 /* Show only the fields relevant to the mode, and refresh readouts + estimate. */
@@ -1611,11 +1618,13 @@ function updateSfForm() {
       var kwh = car.battery * (to - from) / 100;
       var cost = kwh * ((chg.price || 0)) / 100 * costCorrection(chg.id);
       est.textContent = "App estimate for this: " + fmtTime(mins) + " · " + money(cost);
-      // Size the slider to the scenario, and — until the user sets the time
-      // themselves — keep the value on the estimate so it tracks car/charger/levels.
-      var mx = sfTimeMax(mins);
-      if (+$("sfTime").max !== mx) setSfTimeScale(mx);
-      $("sfTime").value = sfTimeTouched ? Math.min(+$("sfTime").value, mx) : Math.min(Math.round(mins), mx);
+      // Bracket the slider around the estimate (no silly 0 floor), and — until the
+      // user sets the time themselves — keep the value on the estimate so it tracks.
+      var b = sfTimeBounds(mins);
+      if (+$("sfTime").min !== b.min || +$("sfTime").max !== b.max) setSfTimeRange(b.min, b.max);
+      $("sfTime").value = sfTimeTouched
+        ? Math.max(b.min, Math.min(+$("sfTime").value, b.max))
+        : Math.min(Math.round(mins), b.max);
       $("sfTimeVal").textContent = fmtTime(+$("sfTime").value);
     }
   }
@@ -1629,7 +1638,8 @@ function openSf(mode) {
     if (!live) return;
     $("sfTo").value = live.targetPct;
     var mins = Math.round((Date.now() - new Date(live.startedAt).getTime()) / 60000);
-    setSfTimeScale(Math.max(480, Math.ceil((mins + 60) / 60) * 60));   // stretch past 8h for long charges
+    // measured elapsed is the anchor; allow adjusting down to 0 (unplugged early) or a bit above
+    setSfTimeRange(0, Math.max(480, Math.ceil((mins + 60) / 60) * 60));
     $("sfTime").value = Math.min(mins, +$("sfTime").max);
     $("sfCost").value = ""; $("sfKwh").value = "";
   } else {
@@ -1667,10 +1677,14 @@ $("startSessionBtn").addEventListener("click", function () {
 $("addSessionBtn").addEventListener("click", openLog);
 $("endSessionBtn").addEventListener("click", openFinish);
 $("sfCancel").addEventListener("click", closeSf);
-["sfFrom", "sfTo"].forEach(function (id) { $(id).addEventListener("input", updateSfForm); addSettleGuard($(id), updateSfForm); });
-["sfCar", "sfCharger"].forEach(function (id) { $(id).addEventListener("change", updateSfForm); });
-$("sfTemp").addEventListener("input", updateSfForm);
-/* Dragging the time slider means the user is setting it — stop tracking the estimate. */
+/* Changing the scenario (car/charger/levels) re-defaults the time to the fresh
+   estimate — so it never gets stranded at a stale value. */
+function sfScenarioChanged() { sfTimeTouched = false; updateSfForm(); }
+["sfFrom", "sfTo"].forEach(function (id) { $(id).addEventListener("input", sfScenarioChanged); addSettleGuard($(id), sfScenarioChanged); });
+["sfCar", "sfCharger"].forEach(function (id) { $(id).addEventListener("change", sfScenarioChanged); });
+$("sfTemp").addEventListener("input", sfScenarioChanged);
+/* Dragging the time slider means the user is setting it — stop tracking the
+   estimate (until they next change the scenario). */
 function sfTimeInput() { sfTimeTouched = true; updateSfForm(); }
 $("sfTime").addEventListener("input", sfTimeInput);
 addSettleGuard($("sfTime"), sfTimeInput);
@@ -1899,8 +1913,11 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.19.4";
+var VERSION = "1.19.5";
 var CHANGELOG = [
+  { v: "1.19.5", date: "2026-09-29", notes: [
+    "The “time taken” slider now brackets the estimate (e.g. ~9–28h for a long charge) instead of running from a nonsensical 0, so the estimate sits mid-slider and every value is plausible"
+  ] },
   { v: "1.19.4", date: "2026-09-29", notes: [
     "When logging, “time taken” now starts at the app's estimate and follows the car/charger/levels you pick, until you set it yourself — instead of sitting at a low default"
   ] },
