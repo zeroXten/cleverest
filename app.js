@@ -822,8 +822,7 @@ function renderCarList() {
     ic.innerHTML = CAR_SVG;
 
     var meta = document.createElement("button");
-    meta.className = "meta carrow-select";
-    meta.style.cssText = "background:none;border:none;padding:0;text-align:left;cursor:pointer;color:inherit;font:inherit;min-width:0";
+    meta.className = "meta";
     meta.innerHTML = '<p class="nm"></p><p class="mt"></p>';
     meta.querySelector(".nm").textContent = car.name;
     meta.querySelector(".mt").textContent =
@@ -831,7 +830,7 @@ function renderCarList() {
     meta.addEventListener("click", function () { openEdit(car.id); });
 
     var right = document.createElement("div");
-    right.style.cssText = "flex:none;display:flex;align-items:center;gap:8px";
+    right.className = "rowend";
     if (cars.length > 1) right.appendChild(gripHandle());
     if (car.id === activeId) {
       var tick = document.createElement("span");
@@ -1163,14 +1162,13 @@ function renderChargerList() {
 
     var meta = document.createElement("button");
     meta.className = "meta";
-    meta.style.cssText = "background:none;border:none;padding:0;text-align:left;cursor:pointer;color:inherit;font:inherit;min-width:0";
     meta.innerHTML = '<p class="nm"></p><p class="mt"></p>';
     meta.querySelector(".nm").textContent = c.name;
     meta.querySelector(".mt").textContent = round1(c.kw) + " kW" + (c.amps > 0 ? " (" + c.amps + " A)" : "") + " · " + typeLabel(c) + " · " + c.price + cur().minor + "/kWh";
     meta.addEventListener("click", function () { openChgEdit(c.id); });
 
     var right = document.createElement("div");
-    right.style.cssText = "flex:none;display:flex;align-items:center;gap:8px";
+    right.className = "rowend";
     if (chargers.length > 1) right.appendChild(gripHandle());
     if (c.id === activeChargerId) {
       var tk = document.createElement("span");
@@ -1424,7 +1422,7 @@ function renderSessionList() {
     row.className = "carrow";
 
     var meta = document.createElement("div");
-    meta.className = "meta"; meta.style.minWidth = "0";
+    meta.className = "meta";
     meta.innerHTML = '<p class="nm"></p><p class="mt"></p>';
     var when = new Date(s.date).toLocaleDateString(undefined, { day: "numeric", month: "short" });
     meta.querySelector(".nm").textContent = when + " · " + (car ? car.name : "?") + " · " + (chg ? chg.name : "?") + " · " + s.type;
@@ -1443,7 +1441,7 @@ function renderSessionList() {
     meta.querySelector(".mt").textContent = parts.join(" · ");
 
     var right = document.createElement("div");
-    right.style.cssText = "flex:none";
+    right.className = "rowend";
     var del = document.createElement("button");
     del.className = "editlink danger"; del.textContent = "Delete";
     del.setAttribute("data-del", s.id);
@@ -1883,8 +1881,11 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.19.1";
+var VERSION = "1.19.2";
 var CHANGELOG = [
+  { v: "1.19.2", date: "2026-09-29", notes: [
+    "Consistency pass: the Save buttons on the car, charger and session forms now match; tidied some internal styling"
+  ] },
   { v: "1.19.1", date: "2026-09-29", notes: [
     "Removed the fiddly number spinners from cost/energy/temperature fields, and they now accept any number of decimals",
     "More space below the session card"

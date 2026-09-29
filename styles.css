@@ -1,6 +1,5 @@
 :root{
   --bg:#06060d;
-  --bg-2:#0b0b18;
   --panel:#101024;
   --panel-2:#15152e;
   --ink:#eef0ff;
@@ -9,12 +8,12 @@
   --line:rgba(140,150,220,.14);
   --line-2:rgba(140,150,220,.28);
   --c1:#ff2d95;
+  --c2:#ff8a00;
   --c3:#ffe600;
   --c4:#25f4b2;
   --c5:#2ec5ff;
   --c6:#8a5cff;
-  --rainbow:linear-gradient(90deg,#ff2d95,#ff8a00,#ffe600,#25f4b2,#2ec5ff,#8a5cff);
-  --radius:12px;
+  --rainbow:linear-gradient(90deg,var(--c1),var(--c2),var(--c3),var(--c4),var(--c5),var(--c6));
   --font-logo:"Orbitron",system-ui,sans-serif;
   --font-body:"IBM Plex Sans",system-ui,sans-serif;
   --font-mono:"IBM Plex Mono",ui-monospace,monospace;
@@ -90,6 +89,8 @@ body{
 .seg button.on{border-color:var(--c5);color:#fff;background:linear-gradient(180deg,rgba(46,197,255,.18),rgba(138,92,255,.12))}
 .backup-row{display:flex;gap:10px}
 .backup-row .btn{margin-top:0;flex:1}
+.import-confirm{margin-top:10px}
+.import-confirm .help{margin-top:0}
 
 /* charger section */
 .section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:22px 0 12px}
@@ -217,6 +218,8 @@ input[type=range]:focus-visible{box-shadow:0 0 0 3px rgba(46,197,255,.35)}
 .carrow .ic{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:var(--panel-2);color:var(--c5);flex:none}
 .carrow .ic svg{width:20px;height:20px}
 .carrow .meta{flex:1;min-width:0}
+.carrow button.meta{background:none;border:none;padding:0;font:inherit;color:inherit;cursor:pointer;text-align:left}
+.carrow .rowend{flex:none;display:flex;align-items:center;gap:8px}
 .carrow .nm{font-weight:600;font-size:14px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .carrow .mt{font-size:11px;color:var(--ink-faint);margin:2px 0 0;font-family:var(--font-mono)}
 .carrow .tick{color:var(--c4);font-family:var(--font-mono);font-size:11px;flex:none}
@@ -359,5 +362,5 @@ input[type=range]:focus-visible{box-shadow:0 0 0 3px rgba(46,197,255,.35)}
    session) so they don't dominate like the main-screen CTA */
 #sessionForm, #livePanel{margin-bottom:28px}
 .btn.compact{width:auto;min-width:150px;margin-top:14px;padding:11px 22px;font-size:14px;box-shadow:0 0 18px -8px rgba(255,45,149,.5)}
-#startCard .btn.compact{display:block;margin-left:auto;margin-right:auto}
+.edit-card .btn.compact{display:block;margin-left:auto;margin-right:auto}
 .live-actions .btn.compact{flex:0 0 auto;margin-top:0}

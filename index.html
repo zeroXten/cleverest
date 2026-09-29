@@ -191,7 +191,7 @@
           <p class="help">Drag the points to match your car's DC fast-charge curve. Look yours up at <a href="https://evkx.net/" target="_blank" rel="noopener noreferrer">EVKX</a> or <a href="https://ev-database.org/" target="_blank" rel="noopener noreferrer">EV Database</a> — or leave it as the typical default.</p>
         </div>
         <p class="form-err" id="formErr" hidden></p>
-        <button type="submit" class="btn">Save car</button>
+        <button type="submit" class="btn compact">Save car</button>
         <div class="edit-actions">
           <button type="button" class="linkbtn" id="cancelEdit">Cancel</button>
           <button type="button" class="linkbtn danger" id="deleteCar" hidden>Delete car</button>
@@ -264,7 +264,7 @@
           <div class="unit"><input type="number" id="cPrice" min="0" step="0.1" inputmode="decimal" placeholder="45"><span class="u" id="cPriceUnit">p/kWh</span></div>
         </div>
         <p class="form-err" id="chgErr" hidden></p>
-        <button type="submit" class="btn">Save charger</button>
+        <button type="submit" class="btn compact">Save charger</button>
         <div class="edit-actions">
           <button type="button" class="linkbtn" id="chgCancel">Cancel</button>
           <button type="button" class="linkbtn danger" id="chgDelete" hidden>Delete charger</button>
@@ -400,8 +400,8 @@
         </div>
         <input type="file" id="importFile" hidden>
         <p class="form-err" id="importErr" hidden></p>
-        <div id="importConfirm" hidden style="margin-top:10px">
-          <p class="help" id="importConfirmMsg" style="margin-top:0"></p>
+        <div id="importConfirm" class="import-confirm" hidden>
+          <p class="help" id="importConfirmMsg"></p>
           <div class="backup-row">
             <button type="button" class="btn" id="importYes">Replace data</button>
             <button type="button" class="btn ghost" id="importNo">Cancel</button>
