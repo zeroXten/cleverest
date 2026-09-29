@@ -1937,8 +1937,11 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.18.2";
+var VERSION = "1.18.3";
 var CHANGELOG = [
+  { v: "1.18.3", date: "2026-09-29", notes: [
+    "Added a bit of breathing room below the live-session card"
+  ] },
   { v: "1.18.2", date: "2026-09-29", notes: [
     "Restored the session cards' boxes and made the Start / End buttons smaller so they sit neatly inside"
   ] },
