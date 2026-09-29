@@ -336,3 +336,17 @@ input[type=range]:focus-visible{box-shadow:0 0 0 3px rgba(46,197,255,.35)}
 .volt-row{display:flex;align-items:center;gap:12px;margin-top:12px}
 .volt-row .seg{flex:1}
 .amps-kw{font-family:var(--font-mono);font-size:15px;font-weight:600;color:var(--c4);white-space:nowrap}
+
+/* live charging session */
+.start-session{margin-top:16px}
+.live-panel{margin-top:16px;background:var(--panel-2);border:1px solid var(--c4);border-radius:16px;padding:16px;box-shadow:0 0 24px -12px var(--c4)}
+.live-head{display:flex;gap:12px;align-items:flex-start}
+.live-dot{width:10px;height:10px;border-radius:50%;background:var(--c4);margin-top:5px;flex:none;animation:live-pulse 2s infinite}
+@keyframes live-pulse{0%{box-shadow:0 0 0 0 rgba(37,244,178,.5)}70%{box-shadow:0 0 0 9px rgba(37,244,178,0)}100%{box-shadow:0 0 0 0 rgba(37,244,178,0)}}
+.live-info{min-width:0}
+.live-title{font-weight:600;font-size:15px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.live-meta{font-family:var(--font-mono);font-size:11px;color:var(--ink-faint);margin:3px 0 0}
+.live-elapsed{font-family:var(--font-mono);font-size:13px;color:var(--c4);margin:5px 0 0}
+.live-actions{display:flex;align-items:center;gap:14px;margin-top:16px}
+.live-actions .btn{margin-top:0;flex:1}
+.live-actions .linkbtn{flex:none}

@@ -103,6 +103,10 @@ var activeChargerId = load(ACTIVE_CHARGER_KEY, null);
 var sessions = load(SESSIONS_KEY, []);
 if (!Array.isArray(sessions)) sessions = [];
 
+var LIVE_KEY = "cleverest.live.v1";
+var live = load(LIVE_KEY, null);          // an in-progress charge, or null
+if (live && (typeof live !== "object" || !live.startedAt)) live = null;
+
 function activeCar() {
   return cars.find(function (c) { return c.id === activeId; }) || cars[0];
 }
@@ -1460,7 +1464,7 @@ function renderCalSummary() {
   var tempN = sessions.filter(function (s) { return s.carId === car.id && s.type === "DC" && s.temp != null && !isNaN(s.temp); }).length;
   if (tempN >= 2) html += '<p class="cal-note">DC time also flexes with the ambient temperature you set on the calculator — learning from ' + tempN + ' temperature-tagged session' + (tempN === 1 ? '' : 's') + '.</p>';
   var costRows = chargers.map(function (c) {
-    return { name: c.name, n: sessions.filter(function (s) { return s.chargerId === c.id; }).length, f: costCorrection(c.id) };
+    return { name: c.name, n: sessions.filter(function (s) { return s.chargerId === c.id && s.actualCost > 0; }).length, f: costCorrection(c.id) };
   }).filter(function (r) { return r.n > 0; });
   if (costRows.length) {
     html += '<p class="cal-h">Cost calibration</p><div class="cal-grid">';
@@ -1491,14 +1495,19 @@ function renderSessionList() {
     meta.innerHTML = '<p class="nm"></p><p class="mt"></p>';
     var when = new Date(s.date).toLocaleDateString(undefined, { day: "numeric", month: "short" });
     meta.querySelector(".nm").textContent = when + " · " + (car ? car.name : "?") + " · " + (chg ? chg.name : "?") + " · " + s.type;
-    var energyBit = "";
-    if (s.actualKwh > 0) {
-      var perKwh = Math.round(s.actualCost / s.actualKwh * 100);
-      energyBit = " · " + round1(s.actualKwh) + " kWh @ " + perKwh + cur().minor + "/kWh";
+    var parts = [
+      s.fromPct + "→" + s.toPct + "%",
+      fmtTime(s.actualMins) + " (est " + fmtTime(s.predMins) + ")"
+    ];
+    if (s.actualCost != null) {
+      var costPart = money(s.actualCost) + " (est " + money(s.predCost) + ")";
+      if (s.actualKwh > 0) costPart += " · " + round1(s.actualKwh) + " kWh @ " + Math.round(s.actualCost / s.actualKwh * 100) + cur().minor + "/kWh";
+      parts.push(costPart);
+    } else if (s.actualKwh > 0) {
+      parts.push(round1(s.actualKwh) + " kWh");
     }
-    meta.querySelector(".mt").textContent =
-      s.fromPct + "→" + s.toPct + "% · " + fmtTime(s.actualMins) + " (est " + fmtTime(s.predMins) + ") · " +
-      money(s.actualCost) + " (est " + money(s.predCost) + ")" + energyBit + (s.temp != null ? " · " + s.temp + "°C" : "");
+    if (s.temp != null) parts.push(s.temp + "°C");
+    meta.querySelector(".mt").textContent = parts.join(" · ");
 
     var right = document.createElement("div");
     right.style.cssText = "flex:none";
@@ -1529,43 +1538,51 @@ $("sessCancel").addEventListener("click", function () { $("sessEditCard").hidden
 });
 $("sTemp").addEventListener("input", updateSessEst);
 
+/* Build and store one completed session, computing the (uncorrected) predictions
+   used for calibration. d.charger is a descriptor { id?, kw, type, phase, price? }.
+   cost/kwh/temp are optional (null when not recorded). Shared by the manual log
+   form and the live start/stop flow. */
+function pushSession(d) {
+  var car = d.car, chg = d.charger;
+  var predMins = baseMinutes(car, d.from, d.to, chg);
+  var predKwh = car.battery * (d.to - d.from) / 100;
+  var predCost = predKwh * (chg.price || 0) / 100;
+  var bands = (chg.type === "DC") ? bandFractions(car, d.from, d.to, chg.kw) : null;
+  function num(v) { return (v === null || v === undefined || isNaN(v)) ? null : v; }
+  sessions.push({
+    id: "sess-" + Date.now().toString(36),
+    date: d.date || new Date().toISOString(),
+    carId: car.id, chargerId: chg.id || null,
+    type: chg.type, phase: chg.phase || "single",
+    fromPct: d.from, toPct: d.to,
+    actualMins: d.mins, actualCost: num(d.cost), actualKwh: num(d.kwh),
+    predMins: predMins, predKwh: predKwh, predCost: predCost,
+    chargerKw: chg.kw, bands: bands, temp: num(d.temp)
+  });
+  sessions.sort(function (a, b) { return new Date(a.date) - new Date(b.date); });
+  if (sessions.length > MAX_SESSIONS) sessions = sessions.slice(sessions.length - MAX_SESSIONS);
+  save(SESSIONS_KEY, sessions);
+}
+
 $("sessEditCard").addEventListener("submit", function (e) {
   e.preventDefault();
   var sc = sessScenario();
   if (!sc.chg) return sessErr("Pick a charger.");
   if (!(sc.to > sc.from)) return sessErr("The finish % must be above the start %.");
   var mins = +$("sMins").value;
-  var cost = parseFloat($("sCost").value);
   if (!(mins > 0)) return sessErr("Set the actual time.");
-  if (!(cost >= 0)) return sessErr("Enter the actual cost.");
+  var costRaw = $("sCost").value.trim();
+  var cost = costRaw === "" ? null : parseFloat(costRaw);
+  if (cost !== null && !(cost >= 0)) return sessErr("Cost must be 0 or more, or leave it blank.");
   var kwhRaw = $("sKwh").value.trim();
-  var actualKwh = kwhRaw === "" ? null : parseFloat(kwhRaw);
-  if (actualKwh !== null && !(actualKwh > 0)) return sessErr("Energy must be a positive number, or leave it blank.");
-  var temp = sessTemp();
+  var kwh = kwhRaw === "" ? null : parseFloat(kwhRaw);
+  if (kwh !== null && !(kwh > 0)) return sessErr("Energy must be a positive number, or leave it blank.");
 
-  var chgObj = { id: sc.chg.id, kw: sc.chg.kw, type: sc.chg.type, phase: sc.chg.phase || "single" };
-  var predMins = baseMinutes(sc.car, sc.from, sc.to, chgObj);
-  var predKwh = sc.car.battery * (sc.to - sc.from) / 100;
-  var predCost = predKwh * sc.chg.price / 100;
-  // For DC, remember how the predicted time split across SoC bands, so the
-  // band-aware calibration can attribute error to the right part of the curve.
-  var bands = (sc.chg.type === "DC") ? bandFractions(sc.car, sc.from, sc.to, sc.chg.kw) : null;
-
-  sessions.push({
-    id: "sess-" + Date.now().toString(36),
-    date: new Date().toISOString(),
-    carId: sc.car.id, chargerId: sc.chg.id,
-    type: sc.chg.type, phase: sc.chg.phase || "single",
-    fromPct: sc.from, toPct: sc.to,
-    actualMins: mins, actualCost: cost,
-    actualKwh: (actualKwh === null || isNaN(actualKwh)) ? null : actualKwh,
-    predMins: predMins, predKwh: predKwh, predCost: predCost,
-    chargerKw: sc.chg.kw, bands: bands,
-    temp: (temp === null || isNaN(temp)) ? null : temp
+  pushSession({
+    car: sc.car,
+    charger: { id: sc.chg.id, kw: sc.chg.kw, type: sc.chg.type, phase: sc.chg.phase || "single", price: sc.chg.price },
+    from: sc.from, to: sc.to, mins: mins, cost: cost, kwh: kwh, temp: sessTemp()
   });
-  sessions.sort(function (a, b) { return new Date(a.date) - new Date(b.date); });
-  if (sessions.length > MAX_SESSIONS) sessions = sessions.slice(sessions.length - MAX_SESSIONS);
-  save(SESSIONS_KEY, sessions);
 
   $("sessEditCard").hidden = true;
   renderSessions();
@@ -1579,6 +1596,129 @@ $("sessionList").addEventListener("click", function (e) {
   save(SESSIONS_KEY, sessions);
   renderSessions();
   calc();
+});
+
+/* ---------- live session (start on the main screen, end later) ---------- */
+var liveEnding = false;     // is the end-of-session form showing?
+var liveTimer = null;
+
+function fmtInMin(iso) { return fmtTime(Math.round((Date.now() - new Date(iso).getTime()) / 60000)); }
+
+function updateLiveElapsed() {
+  if (!live) return;
+  var el = $("liveElapsed"); if (!el) return;
+  el.textContent = "Started " + clock(new Date(live.startedAt)) + " · " + fmtInMin(live.startedAt) + " in";
+}
+function startLiveTimer() { stopLiveTimer(); liveTimer = setInterval(updateLiveElapsed, 30000); }
+function stopLiveTimer() { if (liveTimer) { clearInterval(liveTimer); liveTimer = null; } }
+
+function renderLive() {
+  var startBtn = $("startSessionBtn"), panel = $("livePanel"), endCard = $("liveEndCard");
+  if (!startBtn) return;
+  startBtn.hidden = !!live;
+  panel.hidden = !(live && !liveEnding);
+  endCard.hidden = !(live && liveEnding);
+  if (!live) { liveEnding = false; stopLiveTimer(); return; }
+  if (!liveEnding) {
+    var car = cars.find(function (c) { return c.id === live.carId; });
+    $("liveTitle").textContent = (car ? car.name : "Car") + " · " + live.charger.name;
+    var ready = new Date(new Date(live.startedAt).getTime() + Math.round(live.predMins) * 60000);
+    $("liveMeta").textContent = live.fromPct + "% → " + live.targetPct + "%" +
+      (live.predMins > 0 ? " · est. ready " + clock(ready) : "");
+    updateLiveElapsed();
+    startLiveTimer();
+  } else {
+    stopLiveTimer();
+  }
+}
+
+function startLiveSession() {
+  var car = activeCar();
+  var now = +$("now").value, tgt = +$("tgt").value;
+  var charger = currentCharger();
+  var saved = chargers.find(function (x) { return x.id === charger.id; });
+  var ambient = currentAmbient();
+  live = {
+    startedAt: new Date().toISOString(),
+    carId: car.id,
+    charger: {
+      id: charger.id, name: saved ? saved.name : "Custom charger",
+      kw: charger.kw, type: charger.type, phase: charger.phase, price: +$("price").value
+    },
+    fromPct: now, targetPct: Math.max(now, tgt),
+    temp: (charger.type === "DC") ? ambient : null,
+    predMins: estimateMinutes(car, now, tgt, charger, ambient)
+  };
+  save(LIVE_KEY, live);
+  liveEnding = false;
+  renderLive();
+}
+
+function cancelLiveSession() { live = null; save(LIVE_KEY, null); liveEnding = false; renderLive(); }
+
+function openLiveEnd() {
+  if (!live) return;
+  liveEnding = true;
+  var car = cars.find(function (c) { return c.id === live.carId; });
+  $("leContext").textContent = (car ? car.name : "Car") + " · " + live.charger.name +
+    " · started " + clock(new Date(live.startedAt));
+  $("leEndPct").value = live.targetPct;
+  $("leEndPctVal").textContent = live.targetPct + "%";
+  var mins = Math.round((Date.now() - new Date(live.startedAt).getTime()) / 60000);
+  $("leHours").value = Math.floor(mins / 60);
+  $("leMins").value = mins % 60;
+  $("leKwh").value = ""; $("leCost").value = "";
+  $("leCostUnit").textContent = cur().symbol;
+  $("leErr").hidden = true;
+  renderLive();
+  $("liveEndCard").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function leErr(m) { var e = $("leErr"); e.textContent = m; e.hidden = false; }
+
+$("startSessionBtn").addEventListener("click", startLiveSession);
+$("endSessionBtn").addEventListener("click", openLiveEnd);
+$("leCancel").addEventListener("click", function () { liveEnding = false; renderLive(); });
+$("leEndPct").addEventListener("input", function () { $("leEndPctVal").textContent = (+this.value) + "%"; });
+addSettleGuard($("leEndPct"), function () { $("leEndPctVal").textContent = (+$("leEndPct").value) + "%"; });
+
+/* Discard needs a deliberate second tap (native confirm is unreliable in the PWA). */
+var discardArmed = false, discardTimer = null;
+$("cancelSessionBtn").addEventListener("click", function () {
+  var btn = this;
+  if (!discardArmed) {
+    discardArmed = true; btn.textContent = "Tap again to discard";
+    discardTimer = setTimeout(function () { discardArmed = false; btn.textContent = "Discard"; }, 3000);
+    return;
+  }
+  clearTimeout(discardTimer); discardArmed = false; btn.textContent = "Discard";
+  cancelLiveSession();
+});
+
+$("liveEndCard").addEventListener("submit", function (e) {
+  e.preventDefault();
+  if (!live) { liveEnding = false; renderLive(); return; }
+  var endPct = Math.max(0, Math.min(100, parseFloat($("leEndPct").value)));
+  if (!(endPct > live.fromPct)) return leErr("The finish % must be above the start (" + live.fromPct + "%).");
+  var mins = (parseInt($("leHours").value, 10) || 0) * 60 + (parseInt($("leMins").value, 10) || 0);
+  if (!(mins > 0)) return leErr("Enter how long it took.");
+  var costRaw = $("leCost").value.trim();
+  var cost = costRaw === "" ? null : parseFloat(costRaw);
+  if (cost !== null && !(cost >= 0)) return leErr("Cost must be 0 or more, or leave it blank.");
+  var kwhRaw = $("leKwh").value.trim();
+  var kwh = kwhRaw === "" ? null : parseFloat(kwhRaw);
+  if (kwh !== null && !(kwh > 0)) return leErr("Energy must be a positive number, or leave it blank.");
+
+  var car = cars.find(function (c) { return c.id === live.carId; }) || activeCar();
+  pushSession({
+    car: car, charger: live.charger,
+    from: live.fromPct, to: endPct, mins: mins, cost: cost, kwh: kwh, temp: live.temp
+  });
+
+  live = null; save(LIVE_KEY, null); liveEnding = false;
+  renderLive();
+  calc();
+  showView("sessions"); // show the freshly logged session + updated calibration
 });
 
 /* ---------- compare my chargers ---------- */
@@ -1718,6 +1858,11 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("load", function () {
     navigator.serviceWorker.register("sw.js").then(function (reg) {
       swReg = reg;
+      // The worker registers in a plain browser tab too, but the "update ready"
+      // prompt is an installed-app concept — in a browser a refresh just gets the
+      // latest, so only surface the automatic pill in the standalone PWA.
+      // ("Check for updates" in the menu still works everywhere, on demand.)
+      if (!isStandalone()) return;
       if (reg.waiting && navigator.serviceWorker.controller) showUpdatePill();
       reg.addEventListener("updatefound", function () {
         var nw = reg.installing;
@@ -1742,8 +1887,14 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.16.0";
+var VERSION = "1.17.0";
 var CHANGELOG = [
+  { v: "1.17.0", date: "2026-09-29", notes: [
+    "Start a live charging session from the main screen — set the sliders, tap “Start charging session”, and it remembers the starting battery %, charger and time",
+    "End the session when you're done to log it: the time is filled in from the clock, and energy and cost are now optional",
+    "Logging a session no longer forces you to enter a cost",
+    "The “update ready” prompt now only appears in the installed app, not in a normal browser tab"
+  ] },
   { v: "1.16.0", date: "2026-09-26", notes: [
     "Set an AC charger by its amps (handy for granny chargers) — pick the current on a slider and 230 V or 120 V, and the kW is worked out for you; switch back to kW entry anytime"
   ] },
@@ -1955,3 +2106,4 @@ updateSpeedRange();
   }
 })();
 calc();
+renderLive();
