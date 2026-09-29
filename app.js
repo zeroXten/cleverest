@@ -1937,8 +1937,11 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.18.1";
+var VERSION = "1.18.2";
 var CHANGELOG = [
+  { v: "1.18.2", date: "2026-09-29", notes: [
+    "Restored the session cards' boxes and made the Start / End buttons smaller so they sit neatly inside"
+  ] },
   { v: "1.18.1", date: "2026-09-29", notes: [
     "The Start-a-session setup now matches the calculator's look, with a standalone Start button"
   ] },
