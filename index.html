@@ -126,54 +126,7 @@
         </div>
       </section>
 
-      <button class="btn ghost start-session" id="startSessionBtn">Start charging session</button>
-
-      <div class="live-panel" id="livePanel" hidden>
-        <div class="live-head">
-          <span class="live-dot" aria-hidden="true"></span>
-          <div class="live-info">
-            <p class="live-title" id="liveTitle">Car · Charger</p>
-            <p class="live-meta" id="liveMeta"></p>
-            <p class="live-elapsed" id="liveElapsed"></p>
-          </div>
-        </div>
-        <div class="live-actions">
-          <button class="btn" id="endSessionBtn">End &amp; log</button>
-          <button type="button" class="linkbtn" id="cancelSessionBtn">Discard</button>
-        </div>
-      </div>
-
-      <form class="edit-card" id="liveEndCard" hidden>
-        <p class="divider">Finish session</p>
-        <p class="help" id="leContext"></p>
-        <div class="field">
-          <div class="flabel"><span class="name">Ended at</span><span class="val cyan" id="leEndPctVal">80%</span></div>
-          <input type="range" id="leEndPct" min="0" max="100" value="80" step="1" aria-label="Battery % reached">
-        </div>
-        <div class="field">
-          <div class="flabel"><span class="name">Time taken</span></div>
-          <div class="row2">
-            <div class="field" style="margin:0"><div class="unit"><input type="number" id="leHours" min="0" step="1" inputmode="numeric" placeholder="0"><span class="u">h</span></div></div>
-            <div class="field" style="margin:0"><div class="unit"><input type="number" id="leMins" min="0" max="59" step="1" inputmode="numeric" placeholder="0"><span class="u">min</span></div></div>
-          </div>
-          <p class="help">Filled in from the clock — adjust if you unplugged earlier.</p>
-        </div>
-        <div class="row2">
-          <div class="field">
-            <div class="flabel"><span class="name">Energy <span class="opt">(opt)</span></span></div>
-            <div class="unit"><input type="number" id="leKwh" min="0" step="0.01" inputmode="decimal" placeholder="9.4"><span class="u">kWh</span></div>
-          </div>
-          <div class="field">
-            <div class="flabel"><span class="name">Cost <span class="opt">(opt)</span></span></div>
-            <div class="unit"><input type="number" id="leCost" min="0" step="0.01" inputmode="decimal" placeholder=""><span class="u" id="leCostUnit">£</span></div>
-          </div>
-        </div>
-        <p class="form-err" id="leErr" hidden></p>
-        <button type="submit" class="btn">Save session</button>
-        <div class="edit-actions">
-          <button type="button" class="linkbtn" id="leCancel">Back</button>
-        </div>
-      </form>
+      <button class="btn start-session" id="startSessionBtn">Start charging session</button>
 
       <div class="cmp" id="cmpWrap" hidden>
         <button class="cmp-toggle" id="cmpToggle" aria-expanded="false">
@@ -328,6 +281,81 @@
           Done
         </button>
       </div>
+
+      <!-- live session: start card / in-progress / finish -->
+      <form class="edit-card live-card" id="startCard" hidden>
+        <p class="divider">Start a session</p>
+        <div class="field">
+          <div class="flabel"><span class="name">Car</span></div>
+          <select id="stCar" class="sel"></select>
+        </div>
+        <div class="field">
+          <div class="flabel"><span class="name">Charger</span></div>
+          <select id="stCharger" class="sel"></select>
+          <p class="help" id="stChargerNote"></p>
+        </div>
+        <div class="field">
+          <div class="flabel"><span class="name">Battery now</span><span class="val pink" id="stFromVal">20%</span></div>
+          <input type="range" id="stFrom" min="0" max="100" value="20" step="1" aria-label="Current battery %">
+        </div>
+        <div class="field">
+          <div class="flabel"><span class="name">Charge to</span><span class="val cyan" id="stToVal">80%</span></div>
+          <input type="range" id="stTo" min="0" max="100" value="80" step="1" aria-label="Target battery %">
+        </div>
+        <p class="sess-est" id="stEst"></p>
+        <p class="form-err" id="stErr" hidden></p>
+        <button type="submit" class="btn">Start charging</button>
+        <div class="edit-actions">
+          <button type="button" class="linkbtn" id="stCancel">Cancel</button>
+        </div>
+      </form>
+
+      <div class="live-panel" id="livePanel" hidden>
+        <div class="live-head">
+          <span class="live-dot" aria-hidden="true"></span>
+          <div class="live-info">
+            <p class="live-title" id="liveTitle">Car · Charger</p>
+            <p class="live-meta" id="liveMeta"></p>
+            <p class="live-elapsed" id="liveElapsed"></p>
+          </div>
+        </div>
+        <div class="live-actions">
+          <button class="btn" id="endSessionBtn">End &amp; log</button>
+          <button type="button" class="linkbtn" id="cancelSessionBtn">Discard</button>
+        </div>
+      </div>
+
+      <form class="edit-card" id="liveEndCard" hidden>
+        <p class="divider">Finish session</p>
+        <p class="help" id="leContext"></p>
+        <div class="field">
+          <div class="flabel"><span class="name">Ended at</span><span class="val cyan" id="leEndPctVal">80%</span></div>
+          <input type="range" id="leEndPct" min="0" max="100" value="80" step="1" aria-label="Battery % reached">
+        </div>
+        <div class="field">
+          <div class="flabel"><span class="name">Time taken</span></div>
+          <div class="row2">
+            <div class="field" style="margin:0"><div class="unit"><input type="number" id="leHours" min="0" step="1" inputmode="numeric" placeholder="0"><span class="u">h</span></div></div>
+            <div class="field" style="margin:0"><div class="unit"><input type="number" id="leMins" min="0" max="59" step="1" inputmode="numeric" placeholder="0"><span class="u">min</span></div></div>
+          </div>
+          <p class="help">Filled in from the clock — adjust if you unplugged earlier.</p>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <div class="flabel"><span class="name">Energy <span class="opt">(opt)</span></span></div>
+            <div class="unit"><input type="number" id="leKwh" min="0" step="0.01" inputmode="decimal" placeholder="9.4"><span class="u">kWh</span></div>
+          </div>
+          <div class="field">
+            <div class="flabel"><span class="name">Cost <span class="opt">(opt)</span></span></div>
+            <div class="unit"><input type="number" id="leCost" min="0" step="0.01" inputmode="decimal" placeholder=""><span class="u" id="leCostUnit">£</span></div>
+          </div>
+        </div>
+        <p class="form-err" id="leErr" hidden></p>
+        <button type="submit" class="btn">Save session</button>
+        <div class="edit-actions">
+          <button type="button" class="linkbtn" id="leCancel">Back</button>
+        </div>
+      </form>
 
       <p class="sess-intro">Log what actually happened and the calculator quietly tunes itself to your car and chargers. Recent sessions count most; a few is enough to make a difference.</p>
 

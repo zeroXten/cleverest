@@ -1523,6 +1523,7 @@ function renderSessionList() {
 
 function renderSessions() {
   $("sessEditCard").hidden = true;
+  if (typeof renderLive === "function") renderLive();  // start / in-progress / finish cards
   renderCalSummary();
   renderSessionList();
   var mc = $("mSessionCount"); if (mc) mc.textContent = String(sessions.length);
@@ -1598,8 +1599,9 @@ $("sessionList").addEventListener("click", function (e) {
   calc();
 });
 
-/* ---------- live session (start on the main screen, end later) ---------- */
-var liveEnding = false;     // is the end-of-session form showing?
+/* ---------- live session: set up on the calculator, start & end on Sessions ---------- */
+var liveEnding = false;     // is the finish form showing?
+var starting = false;       // is the start card showing?
 var liveTimer = null;
 
 function fmtInMin(iso) { return fmtTime(Math.round((Date.now() - new Date(iso).getTime()) / 60000)); }
@@ -1612,14 +1614,17 @@ function updateLiveElapsed() {
 function startLiveTimer() { stopLiveTimer(); liveTimer = setInterval(updateLiveElapsed, 30000); }
 function stopLiveTimer() { if (liveTimer) { clearInterval(liveTimer); liveTimer = null; } }
 
+/* Reflect live state: the main-screen button label, and the start / in-progress
+   / finish cards on the Sessions screen. */
 function renderLive() {
-  var startBtn = $("startSessionBtn"), panel = $("livePanel"), endCard = $("liveEndCard");
-  if (!startBtn) return;
-  startBtn.hidden = !!live;
+  var b = $("startSessionBtn");
+  if (b) b.textContent = live ? "Charging session in progress" : "Start charging session";
+  var startCard = $("startCard"), panel = $("livePanel"), endCard = $("liveEndCard");
+  if (!panel) return;
+  startCard.hidden = !(starting && !live);
   panel.hidden = !(live && !liveEnding);
   endCard.hidden = !(live && liveEnding);
-  if (!live) { liveEnding = false; stopLiveTimer(); return; }
-  if (!liveEnding) {
+  if (live && !liveEnding) {
     var car = cars.find(function (c) { return c.id === live.carId; });
     $("liveTitle").textContent = (car ? car.name : "Car") + " · " + live.charger.name;
     var ready = new Date(new Date(live.startedAt).getTime() + Math.round(live.predMins) * 60000);
@@ -1632,29 +1637,48 @@ function renderLive() {
   }
 }
 
-function startLiveSession() {
-  var car = activeCar();
-  var now = +$("now").value, tgt = +$("tgt").value;
-  var charger = currentCharger();
-  var saved = chargers.find(function (x) { return x.id === charger.id; });
-  var ambient = currentAmbient();
-  live = {
-    startedAt: new Date().toISOString(),
-    carId: car.id,
-    charger: {
-      id: charger.id, name: saved ? saved.name : "Custom charger",
-      kw: charger.kw, type: charger.type, phase: charger.phase, price: +$("price").value
-    },
-    fromPct: now, targetPct: Math.max(now, tgt),
-    temp: (charger.type === "DC") ? ambient : null,
-    predMins: estimateMinutes(car, now, tgt, charger, ambient)
-  };
-  save(LIVE_KEY, live);
-  liveEnding = false;
-  renderLive();
+/* ---- start card (prefilled from the calculator, started here on Sessions) ---- */
+function fillStartSelectors() {
+  var carSel = $("stCar"), chgSel = $("stCharger");
+  carSel.innerHTML = ""; chgSel.innerHTML = "";
+  cars.forEach(function (c) { var o = document.createElement("option"); o.value = c.id; o.textContent = c.name; carSel.appendChild(o); });
+  chargers.forEach(function (c) { var o = document.createElement("option"); o.value = c.id; o.textContent = c.name + " (" + typeLabel(c) + ")"; chgSel.appendChild(o); });
 }
+function startScenario() {
+  return {
+    car: cars.find(function (c) { return c.id === $("stCar").value; }) || activeCar(),
+    chg: chargers.find(function (c) { return c.id === $("stCharger").value; }) || null,
+    from: +$("stFrom").value, to: +$("stTo").value
+  };
+}
+function updateStartCard() {
+  var sc = startScenario();
+  $("stFromVal").textContent = sc.from + "%";
+  $("stToVal").textContent = sc.to + "%";
+  $("stChargerNote").textContent = sc.chg ? (typeLabel(sc.chg) + " at " + round1(sc.chg.kw) + " kW") : "";
+  var est = $("stEst");
+  if (!sc.chg || !(sc.to > sc.from)) { est.textContent = ""; return; }
+  var chgObj = { id: sc.chg.id, kw: sc.chg.kw, type: sc.chg.type, phase: sc.chg.phase || "single" };
+  var mins = estimateMinutes(sc.car, sc.from, sc.to, chgObj, currentAmbient());
+  est.textContent = "Est. " + fmtTime(mins) + " · ready " + clock(new Date(Date.now() + Math.round(mins) * 60000));
+}
+function openStartCard() {
+  starting = true; liveEnding = false;
+  fillStartSelectors();
+  $("stCar").value = activeCar().id;
+  var cur = currentCharger();
+  var pick = (cur.id && chargers.some(function (c) { return c.id === cur.id; })) ? cur.id : (chargers[0] ? chargers[0].id : "");
+  if (pick) $("stCharger").value = pick;
+  $("stFrom").value = +$("now").value;
+  $("stTo").value = +$("tgt").value;
+  $("stErr").hidden = true;
+  updateStartCard();
+  renderLive();
+  $("startCard").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+function startErr(m) { var e = $("stErr"); e.textContent = m; e.hidden = false; }
 
-function cancelLiveSession() { live = null; save(LIVE_KEY, null); liveEnding = false; renderLive(); }
+function cancelLiveSession() { live = null; save(LIVE_KEY, null); liveEnding = false; starting = false; renderLive(); }
 
 function openLiveEnd() {
   if (!live) return;
@@ -1676,7 +1700,33 @@ function openLiveEnd() {
 
 function leErr(m) { var e = $("leErr"); e.textContent = m; e.hidden = false; }
 
-$("startSessionBtn").addEventListener("click", startLiveSession);
+$("startSessionBtn").addEventListener("click", function () {
+  showView("sessions");
+  if (live) { starting = false; renderLive(); }
+  else openStartCard();
+});
+$("startCard").addEventListener("submit", function (e) {
+  e.preventDefault();
+  var sc = startScenario();
+  if (!sc.chg) return startErr("Add or pick a charger first.");
+  if (!(sc.to > sc.from)) return startErr("Charge-to must be above battery-now.");
+  var chgObj = { id: sc.chg.id, kw: sc.chg.kw, type: sc.chg.type, phase: sc.chg.phase || "single" };
+  var ambient = currentAmbient();
+  live = {
+    startedAt: new Date().toISOString(),
+    carId: sc.car.id,
+    charger: { id: sc.chg.id, name: sc.chg.name, kw: sc.chg.kw, type: sc.chg.type, phase: sc.chg.phase || "single", price: sc.chg.price },
+    fromPct: sc.from, targetPct: sc.to,
+    temp: (sc.chg.type === "DC") ? ambient : null,
+    predMins: estimateMinutes(sc.car, sc.from, sc.to, chgObj, ambient)
+  };
+  save(LIVE_KEY, live);
+  starting = false; liveEnding = false;
+  renderLive();
+});
+$("stCancel").addEventListener("click", function () { starting = false; renderLive(); });
+["stFrom", "stTo"].forEach(function (id) { $(id).addEventListener("input", updateStartCard); addSettleGuard($(id), updateStartCard); });
+["stCar", "stCharger"].forEach(function (id) { $(id).addEventListener("change", updateStartCard); });
 $("endSessionBtn").addEventListener("click", openLiveEnd);
 $("leCancel").addEventListener("click", function () { liveEnding = false; renderLive(); });
 $("leEndPct").addEventListener("input", function () { $("leEndPctVal").textContent = (+this.value) + "%"; });
@@ -1887,8 +1937,12 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.17.0";
+var VERSION = "1.18.0";
 var CHANGELOG = [
+  { v: "1.18.0", date: "2026-09-29", notes: [
+    "“Start charging session” now takes you to the Sessions screen with your car, charger and battery levels carried over — tweak if needed, then tap Start; end it there when you're done",
+    "Brighter Start button"
+  ] },
   { v: "1.17.0", date: "2026-09-29", notes: [
     "Start a live charging session from the main screen — set the sliders, tap “Start charging session”, and it remembers the starting battery %, charger and time",
     "End the session when you're done to log it: the time is filled in from the clock, and energy and cost are now optional",
