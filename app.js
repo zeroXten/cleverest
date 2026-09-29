@@ -1689,8 +1689,11 @@ function openLiveEnd() {
   $("leEndPct").value = live.targetPct;
   $("leEndPctVal").textContent = live.targetPct + "%";
   var mins = Math.round((Date.now() - new Date(live.startedAt).getTime()) / 60000);
-  $("leHours").value = Math.floor(mins / 60);
-  $("leMins").value = mins % 60;
+  var maxMin = Math.max(480, Math.ceil((mins + 60) / 60) * 60);   // grow past 8h for long (granny) charges
+  var sl = $("leTime");
+  sl.max = maxMin; sl.value = Math.min(mins, maxMin);
+  $("leTimeScale").innerHTML = "<span>0</span><span>" + fmtTime(Math.round(maxMin / 2)) + "</span><span>" + fmtTime(maxMin) + "</span>";
+  updateLeTime();
   $("leKwh").value = ""; $("leCost").value = "";
   $("leCostUnit").textContent = cur().symbol;
   $("leErr").hidden = true;
@@ -1699,6 +1702,7 @@ function openLiveEnd() {
 }
 
 function leErr(m) { var e = $("leErr"); e.textContent = m; e.hidden = false; }
+function updateLeTime() { $("leTimeVal").textContent = fmtTime(+$("leTime").value); }
 
 $("startSessionBtn").addEventListener("click", function () {
   showView("sessions");
@@ -1731,6 +1735,8 @@ $("endSessionBtn").addEventListener("click", openLiveEnd);
 $("leCancel").addEventListener("click", function () { liveEnding = false; renderLive(); });
 $("leEndPct").addEventListener("input", function () { $("leEndPctVal").textContent = (+this.value) + "%"; });
 addSettleGuard($("leEndPct"), function () { $("leEndPctVal").textContent = (+$("leEndPct").value) + "%"; });
+$("leTime").addEventListener("input", updateLeTime);
+addSettleGuard($("leTime"), updateLeTime);
 
 /* Discard needs a deliberate second tap (native confirm is unreliable in the PWA). */
 var discardArmed = false, discardTimer = null;
@@ -1750,8 +1756,8 @@ $("liveEndCard").addEventListener("submit", function (e) {
   if (!live) { liveEnding = false; renderLive(); return; }
   var endPct = Math.max(0, Math.min(100, parseFloat($("leEndPct").value)));
   if (!(endPct > live.fromPct)) return leErr("The finish % must be above the start (" + live.fromPct + "%).");
-  var mins = (parseInt($("leHours").value, 10) || 0) * 60 + (parseInt($("leMins").value, 10) || 0);
-  if (!(mins > 0)) return leErr("Enter how long it took.");
+  var mins = +$("leTime").value;
+  if (!(mins > 0)) return leErr("Set how long it took.");
   var costRaw = $("leCost").value.trim();
   var cost = costRaw === "" ? null : parseFloat(costRaw);
   if (cost !== null && !(cost >= 0)) return leErr("Cost must be 0 or more, or leave it blank.");
@@ -1937,8 +1943,11 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.18.3";
+var VERSION = "1.18.4";
 var CHANGELOG = [
+  { v: "1.18.4", date: "2026-09-29", notes: [
+    "The finish-session “time taken” is a slider again (consistent with logging), and stretches past 8 hours for long trickle charges"
+  ] },
   { v: "1.18.3", date: "2026-09-29", notes: [
     "Added a bit of breathing room below the live-session card"
   ] },

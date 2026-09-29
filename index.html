@@ -333,11 +333,9 @@
           <input type="range" id="leEndPct" min="0" max="100" value="80" step="1" aria-label="Battery % reached">
         </div>
         <div class="field">
-          <div class="flabel"><span class="name">Time taken</span></div>
-          <div class="row2">
-            <div class="field" style="margin:0"><div class="unit"><input type="number" id="leHours" min="0" step="1" inputmode="numeric" placeholder="0"><span class="u">h</span></div></div>
-            <div class="field" style="margin:0"><div class="unit"><input type="number" id="leMins" min="0" max="59" step="1" inputmode="numeric" placeholder="0"><span class="u">min</span></div></div>
-          </div>
+          <div class="flabel"><span class="name">Time taken</span><span class="val violet" id="leTimeVal">1h</span></div>
+          <input type="range" id="leTime" min="0" max="480" value="60" step="1" aria-label="Time taken">
+          <div class="scale" id="leTimeScale"><span>0</span><span>4h</span><span>8h</span></div>
           <p class="help">Filled in from the clock — adjust if you unplugged earlier.</p>
         </div>
         <div class="row2">
