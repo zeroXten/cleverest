@@ -1442,10 +1442,13 @@ function renderSessionList() {
 
     var right = document.createElement("div");
     right.className = "rowend";
+    var edit = document.createElement("button");
+    edit.className = "editlink"; edit.textContent = "Edit";
+    edit.setAttribute("data-edit", s.id);
     var del = document.createElement("button");
     del.className = "editlink danger"; del.textContent = "Delete";
     del.setAttribute("data-del", s.id);
-    right.appendChild(del);
+    right.appendChild(edit); right.appendChild(del);
 
     row.appendChild(meta); row.appendChild(right);
     list.appendChild(row);
@@ -1464,31 +1467,63 @@ function renderSessions() {
    used for calibration. d.charger is a descriptor { id?, kw, type, phase, price? }.
    cost/kwh/temp are optional (null when not recorded). Shared by the manual log
    form and the live start/stop flow. */
-function pushSession(d) {
+function computeSession(d) {
   var car = d.car, chg = d.charger;
   var predMins = baseMinutes(car, d.from, d.to, chg);
   var predKwh = car.battery * (d.to - d.from) / 100;
   var predCost = predKwh * (chg.price || 0) / 100;
   var bands = (chg.type === "DC") ? bandFractions(car, d.from, d.to, chg.kw) : null;
   function num(v) { return (v === null || v === undefined || isNaN(v)) ? null : v; }
-  sessions.push({
-    id: "sess-" + Date.now().toString(36),
-    date: d.date || new Date().toISOString(),
+  return {
     carId: car.id, chargerId: chg.id || null,
     type: chg.type, phase: chg.phase || "single",
     fromPct: d.from, toPct: d.to,
     actualMins: d.mins, actualCost: num(d.cost), actualKwh: num(d.kwh),
     predMins: predMins, predKwh: predKwh, predCost: predCost,
     chargerKw: chg.kw, bands: bands, temp: num(d.temp)
-  });
+  };
+}
+
+function pushSession(d) {
+  var s = computeSession(d);
+  s.id = "sess-" + Date.now().toString(36);
+  s.date = d.date || new Date().toISOString();
+  sessions.push(s);
   sessions.sort(function (a, b) { return new Date(a.date) - new Date(b.date); });
   if (sessions.length > MAX_SESSIONS) sessions = sessions.slice(sessions.length - MAX_SESSIONS);
   save(SESSIONS_KEY, sessions);
 }
 
+/* Replace a recorded session in place, keeping its id and date but recomputing
+   the predictions from the edited car/charger/levels. */
+function updateSession(id, d) {
+  var i = sessions.findIndex(function (s) { return s.id === id; });
+  if (i < 0) return;
+  var s = computeSession(d);
+  s.id = sessions[i].id;
+  s.date = sessions[i].date;
+  sessions[i] = s;
+  save(SESSIONS_KEY, sessions);
+}
+
+/* Edit opens the form on the session; Delete needs a deliberate second tap
+   (one-click delete is too easy to do by mistake, and native confirm is
+   unreliable in the installed PWA). */
+var delArmedId = null, delArmTimer = null;
 $("sessionList").addEventListener("click", function (e) {
+  var ed = e.target.closest("button[data-edit]");
+  if (ed) { openEdit(ed.getAttribute("data-edit")); return; }
   var b = e.target.closest("button[data-del]"); if (!b) return;
   var id = b.getAttribute("data-del");
+  if (delArmedId !== id) {
+    clearTimeout(delArmTimer);
+    delArmedId = id; b.textContent = "Tap to confirm"; b.classList.add("armed");
+    delArmTimer = setTimeout(function () {
+      delArmedId = null; b.textContent = "Delete"; b.classList.remove("armed");
+    }, 3000);
+    return;
+  }
+  clearTimeout(delArmTimer); delArmedId = null;
   sessions = sessions.filter(function (s) { return s.id !== id; });
   save(SESSIONS_KEY, sessions);
   renderSessions();
@@ -1530,7 +1565,8 @@ function renderLive() {
 }
 
 /* ---------- one session form: start / log / finish ---------- */
-var sfMode = "log";        // "start" | "log" | "finish"
+var sfMode = "log";        // "start" | "log" | "finish" | "edit"
+var sfEditId = null;       // which session is being edited (edit mode)
 var sfTimeTouched = false; // has the user set the time themselves? (else it tracks the estimate)
 
 function sfErr(m) { var e = $("sfErr"); e.textContent = m; e.hidden = false; }
@@ -1580,7 +1616,7 @@ function sfTimeBounds(estMins) {
 function updateSfForm() {
   var cc = sfCarChg(), chg = cc.chg, car = cc.car;
   var from = sfFromPct(), to = +$("sfTo").value;
-  var isFinish = sfMode === "finish", isStart = sfMode === "start";
+  var isFinish = sfMode === "finish", isStart = sfMode === "start", isEdit = sfMode === "edit";
 
   $("sfSummary").hidden = !isFinish;
   $("sfCarField").hidden = isFinish;
@@ -1592,9 +1628,9 @@ function updateSfForm() {
   $("sfEst").hidden = isFinish;
 
   $("sfTimeNote").hidden = !isFinish;   // "filled in from the clock" only applies when finishing
-  $("sfTitle").textContent = isStart ? "Start a session" : (isFinish ? "Finish session" : "Log a session");
+  $("sfTitle").textContent = isStart ? "Start a session" : (isFinish ? "Finish session" : (isEdit ? "Edit session" : "Log a session"));
   $("sfToLabel").textContent = isFinish ? "Ended at" : (isStart ? "Charge to" : "To");
-  $("sfSubmit").textContent = isStart ? "Start charging" : "Save session";
+  $("sfSubmit").textContent = isStart ? "Start charging" : (isEdit ? "Save changes" : "Save session");
   $("sfCostUnit").textContent = cur().symbol;
 
   $("sfFromVal").textContent = from + "%";
@@ -1621,6 +1657,10 @@ function updateSfForm() {
       // Bracket the slider around the estimate (no silly 0 floor), and — until the
       // user sets the time themselves — keep the value on the estimate so it tracks.
       var b = sfTimeBounds(mins);
+      if (sfTimeTouched) {   // keep a value the user set (or a recorded time being edited) reachable
+        var v = +$("sfTime").value;
+        b.min = Math.min(b.min, v); b.max = Math.max(b.max, v);
+      }
       if (+$("sfTime").min !== b.min || +$("sfTime").max !== b.max) setSfTimeRange(b.min, b.max);
       $("sfTime").value = sfTimeTouched
         ? Math.max(b.min, Math.min(+$("sfTime").value, b.max))
@@ -1667,6 +1707,32 @@ function openLog() {
 function openStart() { openSf("start"); }
 function openFinish() { openSf("finish"); }
 
+/* Open the form on an existing recorded session so its levels, time, cost,
+   energy and temperature can be corrected. */
+function openEdit(id) {
+  var s = sessions.find(function (x) { return x.id === id; });
+  if (!s) return;
+  if (!chargers.length) { showView("sessions"); sfMode = "edit"; $("sessionForm").hidden = false; renderLive(); sfErr("Add a charger first — a session is scored against one."); return; }
+  sfMode = "edit"; sfEditId = id;
+  sfTimeTouched = true;   // the recorded time is the anchor — don't let the estimate overwrite it
+  $("sfErr").hidden = true;
+  fillSfSelectors();
+  $("sfCar").value = cars.some(function (c) { return c.id === s.carId; }) ? s.carId : (cars[0] ? cars[0].id : "");
+  var chgPick = (s.chargerId && chargers.some(function (c) { return c.id === s.chargerId; })) ? s.chargerId : chargers[0].id;
+  $("sfCharger").value = chgPick;
+  $("sfFrom").value = s.fromPct;
+  $("sfTo").value = s.toPct;
+  $("sfTime").value = s.actualMins;
+  $("sfCost").value = (s.actualCost != null) ? s.actualCost : "";
+  $("sfKwh").value = (s.actualKwh != null) ? s.actualKwh : "";
+  $("sfTemp").value = (s.temp != null) ? s.temp : "";
+  showView("sessions");
+  $("sessionForm").hidden = false;
+  renderLive();          // hide the in-progress card while the form is open
+  updateSfForm();
+  $("sessionForm").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
 function cancelLiveSession() { live = null; save(LIVE_KEY, null); closeSf(); }
 
 $("startSessionBtn").addEventListener("click", function () {
@@ -1679,7 +1745,7 @@ $("endSessionBtn").addEventListener("click", openFinish);
 $("sfCancel").addEventListener("click", closeSf);
 /* Changing the scenario (car/charger/levels) re-defaults the time to the fresh
    estimate — so it never gets stranded at a stale value. */
-function sfScenarioChanged() { sfTimeTouched = false; updateSfForm(); }
+function sfScenarioChanged() { if (sfMode !== "edit") sfTimeTouched = false; updateSfForm(); }
 ["sfFrom", "sfTo"].forEach(function (id) { $(id).addEventListener("input", sfScenarioChanged); addSettleGuard($(id), sfScenarioChanged); });
 ["sfCar", "sfCharger"].forEach(function (id) { $(id).addEventListener("change", sfScenarioChanged); });
 $("sfTemp").addEventListener("input", sfScenarioChanged);
@@ -1738,10 +1804,14 @@ $("sessionForm").addEventListener("submit", function (e) {
   var chargerDesc = (sfMode === "finish")
     ? chg
     : { id: chg.id, kw: chg.kw, type: chg.type, phase: chg.phase || "single", price: chg.price };
+  var payload = { car: car, charger: chargerDesc, from: from, to: to, mins: mins, cost: cost, kwh: kwh, temp: temp };
 
-  pushSession({ car: car, charger: chargerDesc, from: from, to: to, mins: mins, cost: cost, kwh: kwh, temp: temp });
-
-  if (sfMode === "finish") { live = null; save(LIVE_KEY, null); }
+  if (sfMode === "edit") {
+    updateSession(sfEditId, payload);
+  } else {
+    pushSession(payload);
+    if (sfMode === "finish") { live = null; save(LIVE_KEY, null); }
+  }
   closeSf();
   renderSessions();
   calc();
@@ -1913,8 +1983,12 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.19.5";
+var VERSION = "1.20.0";
 var CHANGELOG = [
+  { v: "1.20.0", date: "2026-10-08", notes: [
+    "You can now edit a recorded session — tap Edit on any session to fix the battery levels, time, cost, energy or temperature, and the calibration updates to match",
+    "Deleting a session now needs a second tap to confirm, so a stray tap can't wipe one by accident"
+  ] },
   { v: "1.19.5", date: "2026-09-29", notes: [
     "The “time taken” slider now brackets the estimate (e.g. ~9–28h for a long charge) instead of running from a nonsensical 0, so the estimate sits mid-slider and every value is plausible"
   ] },
