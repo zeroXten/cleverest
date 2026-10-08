@@ -1445,10 +1445,7 @@ function renderSessionList() {
     var edit = document.createElement("button");
     edit.className = "editlink"; edit.textContent = "Edit";
     edit.setAttribute("data-edit", s.id);
-    var del = document.createElement("button");
-    del.className = "editlink danger"; del.textContent = "Delete";
-    del.setAttribute("data-del", s.id);
-    right.appendChild(edit); right.appendChild(del);
+    right.appendChild(edit);
 
     row.appendChild(meta); row.appendChild(right);
     list.appendChild(row);
@@ -1506,28 +1503,12 @@ function updateSession(id, d) {
   save(SESSIONS_KEY, sessions);
 }
 
-/* Edit opens the form on the session; Delete needs a deliberate second tap
-   (one-click delete is too easy to do by mistake, and native confirm is
-   unreliable in the installed PWA). */
-var delArmedId = null, delArmTimer = null;
+/* A row's Edit opens the form on that session; deleting lives inside the edit
+   form (behind a deliberate second tap), so a stray tap in the list can't wipe
+   a session. */
 $("sessionList").addEventListener("click", function (e) {
   var ed = e.target.closest("button[data-edit]");
-  if (ed) { openEdit(ed.getAttribute("data-edit")); return; }
-  var b = e.target.closest("button[data-del]"); if (!b) return;
-  var id = b.getAttribute("data-del");
-  if (delArmedId !== id) {
-    clearTimeout(delArmTimer);
-    delArmedId = id; b.textContent = "Tap to confirm"; b.classList.add("armed");
-    delArmTimer = setTimeout(function () {
-      delArmedId = null; b.textContent = "Delete"; b.classList.remove("armed");
-    }, 3000);
-    return;
-  }
-  clearTimeout(delArmTimer); delArmedId = null;
-  sessions = sessions.filter(function (s) { return s.id !== id; });
-  save(SESSIONS_KEY, sessions);
-  renderSessions();
-  calc();
+  if (ed) openEdit(ed.getAttribute("data-edit"));
 });
 
 /* ---------- live session status card + timer ---------- */
@@ -1571,7 +1552,7 @@ var sfTimeTouched = false; // has the user set the time themselves? (else it tra
 
 function sfErr(m) { var e = $("sfErr"); e.textContent = m; e.hidden = false; }
 function sfTempVal() { var v = $("sfTemp").value.trim(); if (v === "") return null; var n = parseFloat(v); return isNaN(n) ? null : n; }
-function closeSf() { $("sessionForm").hidden = true; renderLive(); }
+function closeSf() { resetSfDelete(); $("sessionForm").hidden = true; renderLive(); }
 
 function fillSfSelectors() {
   var carSel = $("sfCar"), chgSel = $("sfCharger");
@@ -1626,6 +1607,7 @@ function updateSfForm() {
   $("sfActualsRow").hidden = isStart;
   $("sfTempField").hidden = isStart || isFinish;   // log only (finish carries temp from the start)
   $("sfEst").hidden = isFinish;
+  $("sfDelete").hidden = !isEdit;                  // delete a session from inside its edit form
 
   $("sfTimeNote").hidden = !isFinish;   // "filled in from the clock" only applies when finishing
   $("sfTitle").textContent = isStart ? "Start a session" : (isFinish ? "Finish session" : (isEdit ? "Edit session" : "Log a session"));
@@ -1766,6 +1748,24 @@ $("cancelSessionBtn").addEventListener("click", function () {
   }
   clearTimeout(discardTimer); discardArmed = false; btn.textContent = "Discard";
   cancelLiveSession();
+});
+
+/* Deleting an edited session also needs a deliberate second tap. */
+var sfDelArmed = false, sfDelTimer = null;
+function resetSfDelete() { clearTimeout(sfDelTimer); sfDelArmed = false; $("sfDelete").textContent = "Delete session"; }
+$("sfDelete").addEventListener("click", function () {
+  var btn = this;
+  if (!sfDelArmed) {
+    sfDelArmed = true; btn.textContent = "Tap again to delete";
+    sfDelTimer = setTimeout(function () { sfDelArmed = false; btn.textContent = "Delete session"; }, 3000);
+    return;
+  }
+  resetSfDelete();
+  sessions = sessions.filter(function (s) { return s.id !== sfEditId; });
+  save(SESSIONS_KEY, sessions);
+  closeSf();
+  renderSessions();
+  calc();
 });
 
 $("sessionForm").addEventListener("submit", function (e) {
@@ -1983,8 +1983,11 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- version + changelog ---------- */
-var VERSION = "1.20.0";
+var VERSION = "1.20.1";
 var CHANGELOG = [
+  { v: "1.20.1", date: "2026-10-08", notes: [
+    "Tidied the session row: one subtler “Edit” button, with Delete moved inside the edit form (still a second tap to confirm) so it's harder to hit by accident"
+  ] },
   { v: "1.20.0", date: "2026-10-08", notes: [
     "You can now edit a recorded session — tap Edit on any session to fix the battery levels, time, cost, energy or temperature, and the calibration updates to match",
     "Deleting a session now needs a second tap to confirm, so a stray tap can't wipe one by accident"
